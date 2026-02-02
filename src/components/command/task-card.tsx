@@ -62,25 +62,37 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
       {...attributes}
       {...listeners}
       onClick={handleCardClick}
-      className={`cursor-grab active:cursor-grabbing border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] ${
-        isDone ? "bg-zinc-950 opacity-60" : "bg-zinc-900"
+      className={`cursor-grab active:cursor-grabbing border-zinc-700 hover:border-zinc-600 transition-all hover:scale-[1.02] ${
+        isDone ? "bg-zinc-900 opacity-60" : "bg-zinc-800"
       } ${task.needsReview ? "ring-2 ring-amber-500/50" : ""}`}
     >
-      <CardContent className="p-2.5">
-        {/* Top row: avatar, flag, menu */}
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className={`text-sm ${isDone ? "opacity-50" : ""}`}>{creator?.emoji}</span>
-            {task.needsReview && (
-              <Flag className="h-3 w-3 text-amber-500 fill-amber-500" />
-            )}
+      <CardContent className="p-3">
+        {/* Header row: creator + title + menu */}
+        <div className="flex items-start gap-2">
+          {/* Creator emoji */}
+          <span className={`text-sm flex-shrink-0 ${isDone ? "opacity-50" : ""}`}>
+            {creator?.emoji}
+          </span>
+          
+          {/* Title + flag */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h3 className={`font-medium text-sm leading-snug break-words flex-1 ${isDone ? "line-through text-zinc-500" : "text-zinc-100"}`}>
+                {task.title}
+              </h3>
+              {task.needsReview && (
+                <Flag className="h-3 w-3 text-amber-500 fill-amber-500 flex-shrink-0" />
+              )}
+            </div>
           </div>
+          
+          {/* Dropdown menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 -mr-1"
+                className="h-6 w-6 -mr-1 -mt-0.5 flex-shrink-0"
                 data-dropdown
                 onClick={(e) => e.stopPropagation()}
               >
@@ -107,26 +119,23 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
           </DropdownMenu>
         </div>
 
-        {/* Title - with proper wrapping */}
-        <h3 className={`font-medium text-sm leading-snug mb-1 break-words ${isDone ? "line-through text-zinc-500" : ""}`}>
-          {task.title}
-        </h3>
-        
-        {/* Description (if any) - with proper wrapping */}
+        {/* Description - show ALL content (no truncation) */}
         {task.description && (
-          <p className="text-xs text-zinc-400 line-clamp-2 mb-1.5 break-words">
+          <p className={`text-xs text-zinc-400 mt-2 break-words whitespace-pre-wrap ${isDone ? "opacity-50" : ""}`}>
             {task.description}
           </p>
         )}
         
         {/* Priority badge - only show if priority is set */}
         {priority && (
-          <Badge
-            variant="secondary"
-            className={`${priority.color} ${isDone ? "opacity-50" : ""} text-white text-[10px] px-1.5 py-0 h-4`}
-          >
-            {priority.label}
-          </Badge>
+          <div className="mt-2">
+            <Badge
+              variant="secondary"
+              className={`${priority.color} ${isDone ? "opacity-50" : ""} text-white text-[10px] px-1.5 py-0 h-4`}
+            >
+              {priority.label}
+            </Badge>
+          </div>
         )}
       </CardContent>
     </Card>
