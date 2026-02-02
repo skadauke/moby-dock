@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { Task, Status } from "@/types/kanban";
 import { Board } from "@/components/command/board";
 import { TaskModal } from "@/components/command/task-modal";
+import { CommandHeader, FilterType } from "@/components/command/command-header";
 
 interface CommandClientProps {
   initialTasks: Task[];
@@ -13,10 +14,31 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Use ref to access current tasks in callbacks without stale closure issues
   const tasksRef = useRef<Task[]>(tasks);
   tasksRef.current = tasks;
+
+  // Filter tasks based on current filter
+  const filteredTasks = useMemo(() => {
+    switch (filter) {
+      case "flagged":
+        return tasks.filter(t => t.needsReview);
+      case "moby":
+        return tasks.filter(t => t.creator === "MOBY");
+      case "stephan":
+        return tasks.filter(t => t.creator === "STEPHAN");
+      default:
+        return tasks;
+    }
+  }, [tasks, filter]);
+
+  // Count flagged tasks for badge
+  const flaggedCount = useMemo(() => {
+    return tasks.filter(t => t.needsReview).length;
+  }, [tasks]);
 
   const handleDeleteTask = async (taskId: string) => {
     try {
@@ -55,6 +77,21 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
 
   const handleTaskCreated = (newTask: Task) => {
     setTasks((prev) => [...prev, newTask]);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch('/api/tasks');
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data);
+      }
+    } catch (error) {
+      console.error('Failed to refresh tasks:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   /**
@@ -120,14 +157,25 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <Board
-        initialTasks={tasks}
-        onDeleteTask={handleDeleteTask}
-        onToggleFlag={handleToggleFlag}
-        onEditTask={handleEditTask}
-        onTaskStatusChange={handleTaskStatusChange}
-        onTaskReorder={handleTaskReorder}
+      <CommandHeader
+        onTaskCreated={handleTaskCreated}
+        filter={filter}
+        onFilterChange={setFilter}
+        flaggedCount={flaggedCount}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
       />
+      
+      <div className="flex-1 overflow-hidden">
+        <Board
+          initialTasks={filteredTasks}
+          onDeleteTask={handleDeleteTask}
+          onToggleFlag={handleToggleFlag}
+          onEditTask={handleEditTask}
+          onTaskStatusChange={handleTaskStatusChange}
+          onTaskReorder={handleTaskReorder}
+        />
+      </div>
 
       <TaskModal
         open={isModalOpen}
