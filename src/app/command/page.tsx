@@ -1,11 +1,21 @@
-import { LayoutDashboard } from 'lucide-react';
+import { getAllTasks } from "@/lib/api-store";
+import { CommandClient } from "./client";
 
-export default function CommandPage() {
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-500">
-      <LayoutDashboard className="h-16 w-16" />
-      <h1 className="text-2xl font-semibold text-zinc-300">Command</h1>
-      <p>Task board coming soon...</p>
-    </div>
-  );
+export default async function CommandPage() {
+  const tasksResult = await getAllTasks();
+
+  if (!tasksResult.ok) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-zinc-100">Failed to load tasks</h2>
+          <p className="text-zinc-400 mt-2">{tasksResult.error.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const tasks = tasksResult.data;
+
+  return <CommandClient initialTasks={tasks} />;
 }
