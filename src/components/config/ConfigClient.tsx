@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FileTree } from "./FileTree";
 import { CodeEditor } from "./CodeEditor";
 import { QuickAccess } from "./QuickAccess";
+import { SearchPanel } from "./SearchPanel";
 import { readFile, writeFile, QUICK_ACCESS_FILES, BASE_PATHS } from "@/lib/file-api";
 
 export function ConfigClient() {
@@ -104,6 +105,9 @@ export function ConfigClient() {
           <h2 className="text-sm font-semibold text-zinc-300">Files</h2>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
+          {/* Search */}
+          <SearchPanel onSelectResult={handleSelectFile} />
+
           {/* Quick Access */}
           <QuickAccess
             items={QUICK_ACCESS_FILES}
