@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -46,6 +47,10 @@ export function Nav({ user }: NavProps) {
   if (pathname === '/login') {
     return null;
   }
+
+  const handleSignOut = () => {
+    signOut({ callbackUrl: '/login' });
+  };
 
   return (
     <header className="border-b border-zinc-800 bg-zinc-950">
@@ -102,16 +107,12 @@ export function Nav({ user }: NavProps) {
                 <p className="text-xs font-normal text-zinc-500">{user.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-zinc-800" />
-              <DropdownMenuItem asChild>
-                <form action="/api/auth/signout" method="POST" className="w-full">
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2 text-zinc-400 hover:text-zinc-100 cursor-pointer"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
-                </form>
+              <DropdownMenuItem
+                onClick={handleSignOut}
+                className="flex items-center gap-2 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

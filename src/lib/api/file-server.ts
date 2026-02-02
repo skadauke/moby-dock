@@ -15,6 +15,10 @@ class FileServerClient {
     this.token = token;
   }
 
+  clearToken() {
+    this.token = null;
+  }
+
   private async fetch<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
