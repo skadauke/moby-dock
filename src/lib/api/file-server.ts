@@ -16,13 +16,18 @@ class FileServerClient {
   }
 
   private async fetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
     };
 
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
+    }
+    
+    // Merge any additional headers from options
+    if (options.headers) {
+      const optHeaders = options.headers as Record<string, string>;
+      Object.assign(headers, optHeaders);
     }
 
     const response = await fetch(`${FILE_SERVER_URL}${path}`, {
