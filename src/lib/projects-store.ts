@@ -176,34 +176,22 @@ export async function deleteProject(id: string): Promise<Result<void, DbError>> 
   try {
     const supabase = createAdminClient();
     
-    // First check if project exists
-    const { data: existing } = await supabase
+    // Delete the project - FK constraint with ON DELETE SET NULL
+    // automatically sets project_id to NULL for all associated tasks
+    const { error, count } = await supabase
       .from("projects")
-      .select("id")
+      .delete()
       .eq("id", id)
-      .single();
-    
-    if (!existing) {
-      return err(new DbError("Project not found", "NOT_FOUND"));
-    }
-
-    // Unset projectId for all tasks in this project
-    const { error: taskError } = await supabase
-      .from("tasks")
-      .update({ project_id: null, updated_at: new Date().toISOString() })
-      .eq("project_id", id);
-    
-    if (taskError) {
-      console.error("Failed to unassign tasks from project:", taskError);
-      return err(new DbError("Failed to unassign tasks: " + taskError.message, "CONNECTION"));
-    }
-
-    // Now delete the project
-    const { error } = await supabase.from("projects").delete().eq("id", id);
+      .select();
     
     if (error) {
       console.error("Failed to delete project:", error);
       return err(new DbError(error.message, "CONNECTION"));
+    }
+
+    // If no rows deleted, project didn't exist
+    if (count === 0) {
+      return err(new DbError("Project not found", "NOT_FOUND"));
     }
 
     return ok(undefined);
