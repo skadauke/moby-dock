@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,11 +12,42 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+// Production URL for OAuth
+const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "https://moby-dock.vercel.app";
+
+// Check if we're on production
+const isProduction = typeof window !== "undefined" && 
+  (window.location.hostname === "moby-dock.vercel.app" || 
+   window.location.hostname === "localhost");
+
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
+  
+  useEffect(() => {
+    // Check for return URL from preview deployment redirect
+    const returnTo = searchParams.get("returnTo");
+    if (returnTo) {
+      setReturnUrl(returnTo);
+    }
+  }, [searchParams]);
+
   const handleSignIn = async () => {
+    if (!isProduction) {
+      // On preview deployment: redirect to production login with return URL
+      const currentUrl = window.location.origin;
+      const productionLoginUrl = `${PRODUCTION_URL}/login?returnTo=${encodeURIComponent(currentUrl)}`;
+      window.location.href = productionLoginUrl;
+      return;
+    }
+    
+    // On production: do the OAuth flow
+    // After auth, redirect to returnUrl (preview) or default to /command
+    const callbackURL = returnUrl || "/command";
+    
     await authClient.signIn.social({
       provider: "github",
-      callbackURL: "/command",
+      callbackURL,
     });
   };
 
@@ -42,6 +75,11 @@ export default function LoginPage() {
             </svg>
             Sign in with GitHub
           </Button>
+          {returnUrl && (
+            <p className="text-xs text-blue-400 text-center mt-2">
+              You&apos;ll be redirected back to preview after sign in
+            </p>
+          )}
           <p className="text-xs text-zinc-500 text-center mt-4">
             Only authorized users can access this app
           </p>
