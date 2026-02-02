@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 const CLAWDBOT_GATEWAY_URL = process.env.CLAWDBOT_GATEWAY_URL || "http://localhost:3030";
 const CLAWDBOT_GATEWAY_TOKEN = process.env.CLAWDBOT_GATEWAY_TOKEN || "";
 
+/** Timeout for gateway restart request (in milliseconds) */
+const GATEWAY_TIMEOUT_MS = 10000;
+
 /**
  * POST /api/gateway/restart
  * Triggers a restart of the Clawdbot gateway
@@ -15,6 +18,7 @@ export async function POST() {
         "Authorization": `Bearer ${CLAWDBOT_GATEWAY_TOKEN}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -27,6 +31,15 @@ export async function POST() {
 
     return NextResponse.json({ success: true, message: "Gateway restart initiated" });
   } catch (err) {
+    // Handle timeout specifically
+    if (err instanceof Error && err.name === "TimeoutError") {
+      console.error("Gateway restart timed out");
+      return NextResponse.json(
+        { error: "Gateway restart timed out" },
+        { status: 504 }
+      );
+    }
+    
     console.error("Gateway restart error:", err);
     return NextResponse.json(
       { error: "Failed to connect to gateway" },

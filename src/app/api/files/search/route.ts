@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { homedir } from "os";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "https://files.skadauke.dev";
 const FILE_SERVER_TOKEN = process.env.FILE_SERVER_TOKEN || "";
-const HOME = process.env.HOME_DIR || "/Users/skadauke";
+const HOME = process.env.HOME_DIR || homedir();
 
 const BASE_PATHS = [
   `${HOME}/clawd`,
