@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,10 @@ const isProduction = typeof window !== "undefined" &&
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
-  const [returnUrl, setReturnUrl] = useState<string | null>(null);
   
-  useEffect(() => {
-    // Check for return URL from preview deployment redirect
-    const returnTo = searchParams.get("returnTo");
-    if (returnTo) {
-      setReturnUrl(returnTo);
-    }
+  // Derive returnUrl from searchParams (for preview deployment redirects)
+  const returnUrl = useMemo(() => {
+    return searchParams.get("returnTo");
   }, [searchParams]);
 
   const handleSignIn = async () => {
