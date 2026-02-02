@@ -5,9 +5,22 @@ import { createAuthMiddleware, APIError } from "better-auth/api";
 // Allowed GitHub usernames (for private access)
 const ALLOWED_USERS = ["skadauke"];
 
+// Production URL for OAuth callbacks - must match GitHub OAuth app settings
+const PRODUCTION_URL = process.env.BETTER_AUTH_URL || "https://moby-dock.vercel.app";
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL,
+  // Always use production URL for OAuth callbacks
+  // This ensures GitHub OAuth works on preview deployments
+  baseURL: PRODUCTION_URL,
   secret: process.env.BETTER_AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  
+  // Trust Vercel preview deployment origins for cross-origin auth requests
+  trustedOrigins: [
+    PRODUCTION_URL,
+    // Vercel preview deployments pattern - these need to be added dynamically
+    // or we use a wildcard approach via the advanced config
+  ],
+  
   socialProviders: {
     github: {
       clientId: process.env.GITHUB_ID!,
@@ -34,6 +47,13 @@ export const auth = betterAuth({
     cookieCache: {
       enabled: true,
       maxAge: 60 * 5, // 5 minutes
+    },
+  },
+  advanced: {
+    // Allow cross-site cookies for preview deployments
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: ".vercel.app", // Share cookies across all vercel.app subdomains
     },
   },
   hooks: {
