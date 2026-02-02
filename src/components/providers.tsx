@@ -1,11 +1,11 @@
-'use client';
-
-import { SessionProvider } from 'next-auth/react';
+"use client";
 
 interface ProvidersProps {
   children: React.ReactNode;
 }
 
+// Better Auth doesn't require a SessionProvider wrapper
+// The useSession hook works directly without context
 export function Providers({ children }: ProvidersProps) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return <>{children}</>;
 }

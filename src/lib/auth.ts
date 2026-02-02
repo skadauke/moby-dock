@@ -1,44 +1,72 @@
-import NextAuth from 'next-auth';
-import GitHub from 'next-auth/providers/github';
+import { betterAuth } from "better-auth";
+import { nextCookies } from "better-auth/next-js";
+import { createAuthMiddleware, APIError } from "better-auth/api";
 
 // Allowed GitHub usernames (for private access)
-const ALLOWED_USERS = ['skadauke'];
+const ALLOWED_USERS = ["skadauke"];
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [
-    GitHub({
+export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL,
+  secret: process.env.BETTER_AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  socialProviders: {
+    github: {
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!,
+      // Map GitHub profile fields
+      mapProfileToUser: (profile) => ({
+        name: profile.name || profile.login,
+        email: profile.email,
+        image: profile.avatar_url,
+        // Store GitHub username for access control
+        username: profile.login,
+      }),
+    },
+  },
+  user: {
+    additionalFields: {
+      username: {
+        type: "string",
+        required: false,
+      },
+    },
+  },
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 5, // 5 minutes
+    },
+  },
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      // Intercept OAuth callback to check allowed users
+      if (ctx.path === "/callback/github") {
+        // The user info is in the OAuth state/profile after callback
+        // We'll check in the after hook once we have the user
+      }
     }),
-  ],
-  callbacks: {
-    async signIn({ profile }) {
-      // Only allow specific GitHub users
-      const username = profile?.login as string;
-      if (!ALLOWED_USERS.includes(username)) {
-        return false;
+    after: createAuthMiddleware(async (ctx) => {
+      // After sign-in, check if user is allowed
+      if (ctx.path.startsWith("/callback/github")) {
+        const session = ctx.context.newSession;
+        if (session?.user) {
+          const username = (session.user as { username?: string }).username;
+          if (!username || !ALLOWED_USERS.includes(username)) {
+            // User not allowed - we need to sign them out
+            // and return an error
+            throw new APIError("FORBIDDEN", {
+              message: "Access denied. Your GitHub account is not authorized.",
+            });
+          }
+        }
       }
-      return true;
-    },
-    async session({ session, token }) {
-      // Add GitHub username to session
-      if (token.sub) {
-        session.user.id = token.sub;
-      }
-      if (token.username) {
-        session.user.username = token.username as string;
-      }
-      return session;
-    },
-    async jwt({ token, profile }) {
-      if (profile) {
-        token.username = profile.login;
-      }
-      return token;
-    },
+    }),
   },
   pages: {
-    signIn: '/login',
-    error: '/login',
+    signIn: "/login",
+    error: "/login",
   },
+  plugins: [nextCookies()],
 });
+
+// Export type for session
+export type Session = typeof auth.$Infer.Session;
