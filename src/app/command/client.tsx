@@ -5,6 +5,7 @@ import { Task, Status } from "@/types/kanban";
 import { Board } from "@/components/command/board";
 import { TaskModal } from "@/components/command/task-modal";
 import { CommandHeader, FilterType } from "@/components/command/command-header";
+import { ProjectSidebar } from "@/components/command/project-sidebar";
 
 interface CommandClientProps {
   initialTasks: Task[];
@@ -15,30 +16,42 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Use ref to access current tasks in callbacks without stale closure issues
   const tasksRef = useRef<Task[]>(tasks);
   tasksRef.current = tasks;
 
-  // Filter tasks based on current filter
+  // Filter tasks based on current filter AND selected project
   const filteredTasks = useMemo(() => {
+    let result = tasks;
+    
+    // Filter by project first
+    if (selectedProjectId !== null) {
+      result = result.filter(t => t.projectId === selectedProjectId);
+    }
+    
+    // Then apply status/creator filter
     switch (filter) {
       case "flagged":
-        return tasks.filter(t => t.needsReview);
+        return result.filter(t => t.needsReview);
       case "moby":
-        return tasks.filter(t => t.creator === "MOBY");
+        return result.filter(t => t.creator === "MOBY");
       case "stephan":
-        return tasks.filter(t => t.creator === "STEPHAN");
+        return result.filter(t => t.creator === "STEPHAN");
       default:
-        return tasks;
+        return result;
     }
-  }, [tasks, filter]);
+  }, [tasks, filter, selectedProjectId]);
 
-  // Count flagged tasks for badge
+  // Count flagged tasks for badge (respects project filter)
   const flaggedCount = useMemo(() => {
-    return tasks.filter(t => t.needsReview).length;
-  }, [tasks]);
+    const projectTasks = selectedProjectId !== null 
+      ? tasks.filter(t => t.projectId === selectedProjectId)
+      : tasks;
+    return projectTasks.filter(t => t.needsReview).length;
+  }, [tasks, selectedProjectId]);
 
   const handleDeleteTask = async (taskId: string) => {
     try {
@@ -164,17 +177,25 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
         flaggedCount={flaggedCount}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
+        selectedProjectId={selectedProjectId}
       />
       
-      <div className="flex-1 overflow-hidden">
-        <Board
-          initialTasks={filteredTasks}
-          onDeleteTask={handleDeleteTask}
-          onToggleFlag={handleToggleFlag}
-          onEditTask={handleEditTask}
-          onTaskStatusChange={handleTaskStatusChange}
-          onTaskReorder={handleTaskReorder}
+      <div className="flex-1 flex overflow-hidden">
+        <ProjectSidebar
+          selectedProjectId={selectedProjectId}
+          onSelectProject={setSelectedProjectId}
         />
+        
+        <div className="flex-1 overflow-hidden">
+          <Board
+            initialTasks={filteredTasks}
+            onDeleteTask={handleDeleteTask}
+            onToggleFlag={handleToggleFlag}
+            onEditTask={handleEditTask}
+            onTaskStatusChange={handleTaskStatusChange}
+            onTaskReorder={handleTaskReorder}
+          />
+        </div>
       </div>
 
       <TaskModal
