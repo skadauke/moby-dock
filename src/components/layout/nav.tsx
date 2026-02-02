@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
+import type { Session } from 'next-auth';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -32,11 +34,7 @@ const navItems = [
 ];
 
 interface NavProps {
-  user?: {
-    name?: string | null;
-    email?: string | null;
-    image?: string | null;
-  };
+  user?: Session['user'];
 }
 
 export function Nav({ user }: NavProps) {
@@ -102,16 +100,12 @@ export function Nav({ user }: NavProps) {
                 <p className="text-xs font-normal text-zinc-500">{user.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-zinc-800" />
-              <DropdownMenuItem asChild>
-                <form action="/api/auth/signout" method="POST" className="w-full">
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2 text-zinc-400 hover:text-zinc-100 cursor-pointer"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
-                </form>
+              <DropdownMenuItem
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                className="flex items-center gap-2 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

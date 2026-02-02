@@ -4,18 +4,22 @@ import GitHub from 'next-auth/providers/github';
 // Allowed GitHub usernames (for private access)
 const ALLOWED_USERS = ['skadauke'];
 
+// Get GitHub OAuth credentials (validated at runtime during auth)
+const GITHUB_ID = process.env.GITHUB_ID ?? '';
+const GITHUB_SECRET = process.env.GITHUB_SECRET ?? '';
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     GitHub({
-      clientId: process.env.GITHUB_ID!,
-      clientSecret: process.env.GITHUB_SECRET!,
+      clientId: GITHUB_ID,
+      clientSecret: GITHUB_SECRET,
     }),
   ],
   callbacks: {
     async signIn({ profile }) {
       // Only allow specific GitHub users
-      const username = profile?.login as string;
-      if (!ALLOWED_USERS.includes(username)) {
+      const username = profile?.login;
+      if (typeof username !== 'string' || !ALLOWED_USERS.includes(username)) {
         return false;
       }
       return true;
