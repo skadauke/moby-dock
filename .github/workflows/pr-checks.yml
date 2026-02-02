@@ -1,0 +1,110 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Lint
+        run: npm run lint --if-present
+      
+      - name: Type check
+        run: npm run typecheck --if-present || npx tsc --noEmit
+      
+      - name: Build
+        run: npm run build --if-present
+
+  test:
+    name: Tests & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests with coverage
+        run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov || npm test
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --omit=dev
+      
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  repo-health:
+    name: Repo Health
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check required files exist
+        run: |
+          echo "Checking required files..."
+          files=("README.md" "LICENSE")
+          missing=()
+          for file in "${files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              missing+=("$file")
+            fi
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "❌ Missing required files: ${missing[*]}"
+            exit 1
+          fi
+          echo "✅ All required files present"
+      
+      - name: Validate package.json
+        run: |
+          if [[ -f "package.json" ]]; then
+            node -e "const p = require('./package.json'); if (!p.name || !p.version) { console.error('Missing name or version'); process.exit(1); }"
+            echo "✅ package.json valid"
+          fi
