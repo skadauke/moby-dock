@@ -47,12 +47,7 @@ jobs:
         run: npm ci
       
       - name: Run tests with coverage
-        run: |
-          if grep -q '"test"' package.json; then
-            npm test -- --coverage --coverageReporters=text --coverageReporters=lcov || npm test
-          else
-            echo "⏭️ No test script defined - skipping tests"
-          fi
+        run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov || npm test
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
