@@ -10,7 +10,17 @@ import {
   ScrollText,
   Brain,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const navItems = [
   { href: '/command', label: 'Command', icon: LayoutDashboard },
@@ -21,8 +31,21 @@ const navItems = [
   { href: '/skills', label: 'Skills', icon: Sparkles },
 ];
 
-export function Nav() {
+interface NavProps {
+  user?: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  };
+}
+
+export function Nav({ user }: NavProps) {
   const pathname = usePathname();
+
+  // Don't show nav on login page
+  if (pathname === '/login') {
+    return null;
+  }
 
   return (
     <header className="border-b border-zinc-800 bg-zinc-950">
@@ -60,12 +83,39 @@ export function Nav() {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* User menu placeholder */}
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400">
-            👤
-          </div>
-        </div>
+        {/* User menu */}
+        {user && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-zinc-600">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={user.image || undefined} alt={user.name || 'User'} />
+                  <AvatarFallback className="bg-zinc-800 text-zinc-400">
+                    {user.name?.[0]?.toUpperCase() || '?'}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-zinc-900 border-zinc-800">
+              <DropdownMenuLabel className="text-zinc-100">
+                {user.name}
+                <p className="text-xs font-normal text-zinc-500">{user.email}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-zinc-800" />
+              <DropdownMenuItem asChild>
+                <form action="/api/auth/signout" method="POST" className="w-full">
+                  <button
+                    type="submit"
+                    className="flex w-full items-center gap-2 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </form>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </header>
   );
