@@ -27,6 +27,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
+
   const { name, description, color } = body;
   
   if (!name || typeof name !== "string") {

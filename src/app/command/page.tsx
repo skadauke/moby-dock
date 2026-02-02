@@ -1,12 +1,8 @@
 import { getAllTasks } from "@/lib/api-store";
-import { getAllProjects } from "@/lib/projects-store";
 import { CommandClient } from "./client";
 
 export default async function CommandPage() {
-  const [tasksResult, projectsResult] = await Promise.all([
-    getAllTasks(),
-    getAllProjects(),
-  ]);
+  const tasksResult = await getAllTasks();
 
   if (!tasksResult.ok) {
     return (
@@ -20,7 +16,6 @@ export default async function CommandPage() {
   }
 
   const tasks = tasksResult.data;
-  const projects = projectsResult.ok ? projectsResult.data : [];
 
-  return <CommandClient initialTasks={tasks} projects={projects} />;
+  return <CommandClient initialTasks={tasks} />;
 }

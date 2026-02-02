@@ -14,6 +14,7 @@ describe('FileServerClient', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    fileServer.clearToken() // Reset auth state between tests
   })
 
   describe('health', () => {

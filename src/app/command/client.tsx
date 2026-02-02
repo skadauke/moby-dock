@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from "react";
-import { Task, Project } from "@/types/kanban";
+import { Task } from "@/types/kanban";
 import { Board } from "@/components/command/board";
 
 interface CommandClientProps {
   initialTasks: Task[];
-  projects: Project[];
+  // projects prop available for future filtering - re-add when needed
 }
 
-export function CommandClient({ initialTasks, projects }: CommandClientProps) {
+export function CommandClient({ initialTasks }: CommandClientProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
 
   const handleDeleteTask = async (taskId: string) => {

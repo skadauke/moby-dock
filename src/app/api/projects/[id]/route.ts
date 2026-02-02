@@ -34,6 +34,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     );
   }
 
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
+
   const result = await updateProject(id, body);
   
   if (!result.ok) {

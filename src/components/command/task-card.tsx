@@ -18,7 +18,7 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
   const creator = CREATORS.find(c => c.value === task.creator);
 
   return (
-    <Card className="bg-zinc-800 border-zinc-700 hover:border-zinc-600 transition-colors">
+    <Card className="group bg-zinc-800 border-zinc-700 hover:border-zinc-600 transition-colors">
       <CardContent className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">

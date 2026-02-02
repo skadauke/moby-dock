@@ -23,14 +23,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!["BACKLOG", "READY", "DONE"].includes(status)) {
+  // Accept both READY and IN_PROGRESS (legacy DB value)
+  const validStatuses = ["BACKLOG", "READY", "IN_PROGRESS", "DONE"];
+  if (!validStatuses.includes(status)) {
     return NextResponse.json(
       { error: "Invalid status" },
       { status: 400 }
     );
   }
 
-  const result = await reorderTasks(taskIds, status as Status);
+  // Map IN_PROGRESS to READY (DB compatibility)
+  const mappedStatus = status === "IN_PROGRESS" ? "READY" : status;
+  const result = await reorderTasks(taskIds, mappedStatus as Status);
   
   if (!result.ok) {
     return NextResponse.json(
