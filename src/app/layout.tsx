@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Nav } from '@/components/layout/nav';
+import { Providers } from '@/components/providers';
 import { auth } from '@/lib/auth';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -21,10 +22,12 @@ export default async function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-zinc-950 text-zinc-100 min-h-screen`}>
-        <Nav user={session?.user} />
-        <main className="h-[calc(100vh-3.5rem)]">
-          {children}
-        </main>
+        <Providers>
+          <Nav user={session?.user} />
+          <main className="h-[calc(100vh-3.5rem)]">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );
