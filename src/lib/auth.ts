@@ -50,6 +50,8 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // Use secure cookies with SameSite=None for Safari compatibility
+    useSecureCookies: true,
     // Allow cross-site cookies for preview deployments
     crossSubDomainCookies: {
       enabled: true,
