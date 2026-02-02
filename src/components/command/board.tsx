@@ -51,19 +51,25 @@ export function Board({
     onToggleFlag?.(taskId);
   };
 
-  // Optimistic update for status change
+  /**
+   * Optimistic update for status change (moving task between columns).
+   * Reindexes both source and target columns to maintain contiguous positions.
+   */
   const handleTaskStatusChange = useCallback((taskId: string, newStatus: Status, newPosition: number) => {
     setTasks((prev) => {
       // Get the task being moved
       const task = prev.find(t => t.id === taskId);
       if (!task) return prev;
 
+      const sourceStatus = task.status;
+      const isStatusChange = sourceStatus !== newStatus;
+
       // Get tasks in the target column (excluding the moving task)
       const targetColumnTasks = prev
         .filter(t => t.status === newStatus && t.id !== taskId)
         .sort((a, b) => a.position - b.position);
 
-      // Update positions in target column
+      // Update positions in target column - shift tasks at and after newPosition
       const updatedTargetTasks = targetColumnTasks.map((t, i) => ({
         ...t,
         position: i >= newPosition ? i + 1 : i,
@@ -72,15 +78,31 @@ export function Board({
       // Update the moved task
       const updatedTask = { ...task, status: newStatus, position: newPosition };
 
-      // Get tasks not in target column (and not the moving task)
-      const otherTasks = prev.filter(t => t.status !== newStatus && t.id !== taskId);
+      // Reindex source column if moving across columns (to fill the gap)
+      const updatedSourceTasks = isStatusChange
+        ? prev
+            .filter(t => t.status === sourceStatus && t.id !== taskId)
+            .sort((a, b) => a.position - b.position)
+            .map((t, i) => ({ ...t, position: i }))
+        : [];
 
-      return [...otherTasks, ...updatedTargetTasks, updatedTask];
+      // Get tasks not in affected columns (and not the moving task)
+      const otherTasks = prev.filter(t => {
+        if (t.id === taskId) return false;
+        if (t.status === newStatus) return false;
+        if (isStatusChange && t.status === sourceStatus) return false;
+        return true;
+      });
+
+      return [...otherTasks, ...updatedSourceTasks, ...updatedTargetTasks, updatedTask];
     });
     onTaskStatusChange?.(taskId, newStatus, newPosition);
   }, [onTaskStatusChange]);
 
-  // Optimistic update for reorder within same column
+  /**
+   * Optimistic update for reorder within same column.
+   * Removes task from current position, inserts at new position, reindexes.
+   */
   const handleTaskReorder = useCallback((taskId: string, newPosition: number) => {
     setTasks((prev) => {
       const task = prev.find(t => t.id === taskId);
@@ -100,7 +122,7 @@ export function Board({
       // Insert at new position
       reordered.splice(newPosition, 0, removed);
 
-      // Update positions
+      // Update positions to be contiguous
       const updatedColumnTasks = reordered.map((t, i) => ({ ...t, position: i }));
 
       // Get tasks not in this column
