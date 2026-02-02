@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/layout/nav";
 import { Providers } from "@/components/providers";
+import { VersionTag } from "@/components/version-tag";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
@@ -30,6 +31,7 @@ export default async function RootLayout({
         <Providers>
           <Nav user={session?.user} />
           <main className="h-[calc(100vh-3.5rem)]">{children}</main>
+          <VersionTag />
         </Providers>
       </body>
     </html>
