@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Task, Project, Priority, Creator, PRIORITIES, CREATORS } from "@/types/kanban";
+import { Markdown } from "@/components/ui/markdown";
 
 interface TaskModalProps {
   open: boolean;
@@ -48,6 +49,7 @@ export function TaskModal({
   const [projects, setProjects] = useState<Project[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
 
   const isEditing = !!task;
 
@@ -76,6 +78,7 @@ export function TaskModal({
       setProjectId(defaultProjectId);
     }
     setError(null);
+    setIsEditingDescription(!task); // Start in edit mode for new tasks
   }, [task, open, defaultCreator, defaultProjectId]);
 
   const doSubmit = useCallback(async () => {
@@ -182,14 +185,37 @@ export function TaskModal({
 
           <div className="space-y-2">
             <Label htmlFor="description">Details</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add context, links, notes..."
-              className="bg-zinc-900 border-zinc-800 min-h-[100px]"
-              disabled={isSubmitting}
-            />
+            {isEditingDescription ? (
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onBlur={() => {
+                  // Only switch to preview if there's content and we're editing an existing task
+                  if (description && isEditing) {
+                    setIsEditingDescription(false);
+                  }
+                }}
+                placeholder="Add context, links, notes... (Markdown supported)"
+                className="bg-zinc-900 border-zinc-800 min-h-[100px]"
+                disabled={isSubmitting}
+                autoFocus={isEditing}
+              />
+            ) : description ? (
+              <div
+                onClick={() => !isSubmitting && setIsEditingDescription(true)}
+                className="bg-zinc-900 border border-zinc-800 rounded-md p-3 min-h-[100px] cursor-text hover:border-zinc-700 transition-colors"
+              >
+                <Markdown className="text-sm">{description}</Markdown>
+              </div>
+            ) : (
+              <div
+                onClick={() => !isSubmitting && setIsEditingDescription(true)}
+                className="bg-zinc-900 border border-zinc-800 rounded-md p-3 min-h-[100px] cursor-text hover:border-zinc-700 transition-colors text-zinc-500 text-sm"
+              >
+                Click to add details (Markdown supported)...
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

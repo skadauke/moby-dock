@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Flag, Trash2, Pencil } from "lucide-react";
+import { Markdown } from "@/components/ui/markdown";
 
 interface TaskCardProps {
   task: Task;
@@ -119,11 +120,11 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
           </DropdownMenu>
         </div>
 
-        {/* Description - show ALL content (no truncation) */}
+        {/* Description - render as Markdown */}
         {task.description && (
-          <p className={`text-xs text-zinc-400 mt-2 break-words whitespace-pre-wrap ${isDone ? "opacity-50" : ""}`}>
-            {task.description}
-          </p>
+          <div className={`text-xs text-zinc-400 mt-2 break-words ${isDone ? "opacity-50" : ""}`}>
+            <Markdown>{task.description}</Markdown>
+          </div>
         )}
         
         {/* Priority badge - only show if priority is set */}
