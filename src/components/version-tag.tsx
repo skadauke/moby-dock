@@ -3,25 +3,22 @@
 import { useSyncExternalStore, useCallback } from "react";
 
 /**
- * Format date and time in user's local timezone
+ * Format date and time in ISO-style: YYYY-MM-DD HH:MM
  */
 function formatDateTime() {
   const now = new Date();
-  const date = now.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-  const time = now.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${date}, ${time}`;
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 /**
- * Displays a subtle version/time tag in the corner of the app.
- * Shows commit hash and local date/time (updates every minute).
+ * Displays a subtle build tag in the corner of the app.
+ * Format: "Build 8b94251 · 2026-02-03 14:21"
+ * Time updates every minute.
  */
 export function VersionTag() {
   // Get commit SHA from Vercel env (available at build time)
@@ -43,7 +40,7 @@ export function VersionTag() {
 
   return (
     <div className="fixed bottom-2 right-2 text-[10px] text-zinc-600 font-mono select-none pointer-events-none z-50">
-      {commitSha} · {localDateTime}
+      Build {commitSha} · {localDateTime}
     </div>
   );
 }
