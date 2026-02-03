@@ -1,49 +1,46 @@
 "use client";
 
-import { useSyncExternalStore, useCallback } from "react";
-
 /**
- * Format date and time in user's local timezone
+ * Format deployment time with year, month, day, and time
+ * Uses the build time captured at deployment, NOT the current time
  */
-function formatDateTime() {
-  const now = new Date();
-  const date = now.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-  const time = now.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${date}, ${time}`;
+function formatDeployTime(isoString: string | undefined): string {
+  if (!isoString) return "";
+  
+  try {
+    const date = new Date(isoString);
+    
+    // Format: "2026-02-03 14:21"
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch {
+    return "";
+  }
 }
 
 /**
- * Displays a subtle version/time tag in the corner of the app.
- * Shows commit hash and local date/time (updates every minute).
+ * Displays a subtle version/deploy tag in the corner of the app.
+ * Shows commit hash and DEPLOYMENT time (not current time).
  */
 export function VersionTag() {
   // Get commit SHA from Vercel env (available at build time)
   const commitSha = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "dev";
-
-  // Use useSyncExternalStore for time updates (avoids setState-in-effect lint error)
-  const subscribe = useCallback((callback: () => void) => {
-    const interval = setInterval(callback, 60000);
-    return () => clearInterval(interval);
-  }, []);
   
-  const getSnapshot = useCallback(() => formatDateTime(), []);
-  const getServerSnapshot = useCallback(() => "", []); // Empty on server to avoid hydration mismatch
-  
-  const localDateTime = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // Get build/deployment time (set in next.config.ts at build time)
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME;
+  const deployTime = formatDeployTime(buildTime);
 
-  // Don't render on server (no hydration mismatch)
-  if (!localDateTime) return null;
+  // Don't render if no deploy time
+  if (!deployTime) return null;
 
   return (
     <div className="fixed bottom-2 right-2 text-[10px] text-zinc-600 font-mono select-none pointer-events-none z-50">
-      {commitSha} · {localDateTime}
+      {commitSha} · {deployTime}
     </div>
   );
 }
