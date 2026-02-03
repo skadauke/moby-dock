@@ -21,6 +21,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Task, Project, Priority, Creator, PRIORITIES, CREATORS } from "@/types/kanban";
 import { Markdown } from "@/components/ui/markdown";
+import { formatDateTime } from "@/lib/date-utils";
 
 interface TaskModalProps {
   open: boolean;
@@ -294,6 +295,14 @@ export function TaskModal({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Timestamps - only show for existing tasks */}
+          {isEditing && task && (
+            <div className="text-xs text-zinc-500 flex gap-4 pt-2 border-t border-zinc-800">
+              <span>Created: {formatDateTime(task.createdAt)}</span>
+              <span>Updated: {formatDateTime(task.updatedAt)}</span>
+            </div>
+          )}
 
           <DialogFooter>
             <Button
