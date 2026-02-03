@@ -25,7 +25,7 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const result = await removeQuickAccessItem(id);
+  const result = await removeQuickAccessItem(id, session.user.id);
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error.message }, { status: 500 });

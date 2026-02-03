@@ -15,11 +15,20 @@ import {
 // Production URL for OAuth
 const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "https://moby-dock.vercel.app";
 
-// Check if we're on production (including localhost for dev)
+// Check if we're on the production/auth host (including localhost for dev)
 function checkIsProduction(): boolean {
   if (typeof window === "undefined") return false;
   const hostname = window.location.hostname;
-  return hostname === "moby-dock.vercel.app" || 
+  
+  // Derive production hostname from PRODUCTION_URL
+  let prodHostname = "moby-dock.vercel.app";
+  try {
+    prodHostname = new URL(PRODUCTION_URL).hostname;
+  } catch {
+    // Fall back to default if URL parsing fails
+  }
+  
+  return hostname === prodHostname || 
          hostname === "localhost" || 
          hostname === "127.0.0.1";
 }

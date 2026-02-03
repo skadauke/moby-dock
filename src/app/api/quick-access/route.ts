@@ -16,8 +16,8 @@ import {
   initializeDefaultQuickAccess,
 } from "@/lib/quick-access-store";
 
-/** Home directory for default quick access paths */
-const HOME = process.env.HOME_DIR || "/Users/skadauke";
+/** Home directory for default quick access paths (from env or system) */
+const HOME = process.env.HOME_DIR ?? process.env.HOME;
 
 /**
  * GET /api/quick-access
@@ -37,6 +37,12 @@ export async function GET() {
 
   // If user has no items, initialize with defaults
   if (result.data.length === 0) {
+    if (!HOME) {
+      return NextResponse.json(
+        { error: "HOME_DIR is not configured" },
+        { status: 500 }
+      );
+    }
     const initResult = await initializeDefaultQuickAccess(session.user.id, HOME);
     if (!initResult.ok) {
       return NextResponse.json({ error: initResult.error.message }, { status: 500 });

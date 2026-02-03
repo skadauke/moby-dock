@@ -104,6 +104,9 @@ export function ConfigClient() {
     try {
       await writeFile(selectedPath, content);
       setOriginalContent(content);
+      // Update serverModifiedAt to prevent false conflict detection
+      const data = await readFile(selectedPath);
+      setServerModifiedAt(data.modifiedAt);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {

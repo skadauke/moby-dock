@@ -73,6 +73,7 @@ function SortableItem({ item, isSelected, onSelect, onRemove }: SortableItemProp
       <button
         {...attributes}
         {...listeners}
+        aria-label="Drag to reorder"
         className="p-0.5 cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400"
         title="Drag to reorder"
       >
@@ -99,6 +100,7 @@ function SortableItem({ item, isSelected, onSelect, onRemove }: SortableItemProp
           e.stopPropagation();
           onRemove();
         }}
+        aria-label="Remove from Quick Access"
         className="p-1 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-opacity"
         title="Remove from Quick Access"
       >

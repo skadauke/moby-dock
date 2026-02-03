@@ -18,7 +18,7 @@ interface ColumnProps {
 export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFlag }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
-  // Only show prominent blue highlight when column is empty or has few cards
+  // Only show prominent blue highlight when column is empty
   // When cards exist, show subtle border only to avoid visual clutter
   const isEmpty = tasks.length === 0;
   const showFullHighlight = isOver && isEmpty;

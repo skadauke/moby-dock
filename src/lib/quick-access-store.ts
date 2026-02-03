@@ -89,12 +89,16 @@ export async function addQuickAccessItem(
     const supabase = createAdminClient();
     
     // Get max position for this user
-    const { data: maxPosData } = await supabase
+    const { data: maxPosData, error: maxPosError } = await supabase
       .from("quick_access_items")
       .select("position")
       .eq("user_id", userId)
       .order("position", { ascending: false })
       .limit(1);
+
+    if (maxPosError) {
+      return err(new Error(maxPosError.message));
+    }
     
     const maxPosition = maxPosData?.[0]?.position ?? -1;
     
@@ -127,15 +131,22 @@ export async function addQuickAccessItem(
 /**
  * Remove a quick access item
  */
+/**
+ * Removes a quick access item by ID, ensuring the user owns it.
+ * @param id - The item's UUID
+ * @param userId - The user's ID (for ownership verification)
+ */
 export async function removeQuickAccessItem(
-  id: string
+  id: string,
+  userId: string
 ): Promise<Result<void, Error>> {
   try {
     const supabase = createAdminClient();
     const { error } = await supabase
       .from("quick_access_items")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) {
       return err(new Error(error.message));
