@@ -118,7 +118,7 @@ describe("QUICK_ACCESS_FILES", () => {
     expect(fileNames).toContain("USER.md");
     expect(fileNames).toContain("IDENTITY.md");
     expect(fileNames).toContain("MEMORY.md");
-    expect(fileNames).toContain("clawdbot.json");
+    expect(fileNames).toContain("openclaw.json");
   });
 
   it("all files have required properties", () => {
@@ -132,9 +132,9 @@ describe("QUICK_ACCESS_FILES", () => {
     });
   });
 
-  it("paths contain clawd or clawdbot directories", () => {
+  it("paths contain clawd or openclaw directories", () => {
     QUICK_ACCESS_FILES.forEach(file => {
-      expect(file.path).toMatch(/clawd|clawdbot/);
+      expect(file.path).toMatch(/clawd|openclaw/);
     });
   });
 });
@@ -144,8 +144,8 @@ describe("BASE_PATHS", () => {
     const pathNames = BASE_PATHS.map(p => p.name);
     
     expect(pathNames).toContain("Workspace");
-    expect(pathNames).toContain("Clawdbot");
-    expect(pathNames).toContain("Config");
+    expect(pathNames).toContain("OpenClaw");
+    // Config removed - secrets now in ~/.openclaw/credentials/
   });
 
   it("all paths have required properties", () => {
@@ -157,7 +157,7 @@ describe("BASE_PATHS", () => {
     });
   });
 
-  it("has 3 base paths", () => {
-    expect(BASE_PATHS).toHaveLength(3);
+  it("has 2 base paths", () => {
+    expect(BASE_PATHS).toHaveLength(2);
   });
 });

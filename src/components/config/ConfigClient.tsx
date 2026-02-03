@@ -24,7 +24,7 @@ export function ConfigClient() {
 
   const hasChanges = content !== originalContent;
   const filename = selectedPath?.split("/").pop() || "";
-  const isClawdbotConfig = filename === "clawdbot.json";
+  const isOpenClawConfig = filename === "openclaw.json";
 
   // Load file content
   const loadFile = useCallback(async (path: string) => {
@@ -116,12 +116,12 @@ export function ConfigClient() {
     }
   }, [selectedPath, content, hasChanges]);
 
-  // Restart Clawdbot Gateway
+  // Restart OpenClaw Gateway
   const restartGateway = useCallback(async () => {
     setIsRestarting(true);
     setError(null);
     try {
-      // Call the Clawdbot gateway restart endpoint
+      // Call the OpenClaw gateway restart endpoint
       const res = await fetch("/api/gateway/restart", { method: "POST" });
       if (!res.ok) {
         throw new Error("Failed to restart gateway");
@@ -227,14 +227,14 @@ export function ConfigClient() {
                 {error}
               </span>
             )}
-            {isClawdbotConfig && (
+            {isOpenClawConfig && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={restartGateway}
                 disabled={isRestarting || hasChanges}
                 className="h-8"
-                title={hasChanges ? "Save changes first" : "Restart Clawdbot Gateway"}
+                title={hasChanges ? "Save changes first" : "Restart OpenClaw Gateway"}
               >
                 {isRestarting ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />

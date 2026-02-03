@@ -78,14 +78,13 @@ export const QUICK_ACCESS_FILES = [
   { name: 'USER.md', path: `${HOME}/clawd/USER.md`, description: 'User info' },
   { name: 'IDENTITY.md', path: `${HOME}/clawd/IDENTITY.md`, description: 'Name & avatar' },
   { name: 'MEMORY.md', path: `${HOME}/clawd/MEMORY.md`, description: 'Long-term memory' },
-  { name: 'clawdbot.json', path: `${HOME}/.clawdbot/clawdbot.json`, description: 'Gateway config' },
+  { name: 'openclaw.json', path: `${HOME}/.openclaw/openclaw.json`, description: 'Gateway config' },
 ];
 
 // Base paths for file tree
 export const BASE_PATHS = [
   { name: 'Workspace', path: `${HOME}/clawd`, description: '~/clawd' },
-  { name: 'Clawdbot', path: `${HOME}/.clawdbot`, description: '~/.clawdbot' },
-  { name: 'Config', path: `${HOME}/.config/moby`, description: '~/.config/moby' },
+  { name: 'OpenClaw', path: `${HOME}/.openclaw`, description: '~/.openclaw' },
 ];
 
 // Get language for Monaco based on file extension
