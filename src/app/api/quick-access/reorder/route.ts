@@ -1,3 +1,11 @@
+/**
+ * Quick Access Reorder Route
+ * 
+ * Handles reordering of quick access items via drag-and-drop.
+ * 
+ * @module api/quick-access/reorder
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";

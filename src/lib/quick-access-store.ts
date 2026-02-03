@@ -1,6 +1,18 @@
+/**
+ * Quick Access Store
+ * 
+ * Manages user-configurable quick access file shortcuts stored in Supabase.
+ * Each user has their own set of quick access items that persist across sessions.
+ * 
+ * @module quick-access-store
+ */
+
 import { createAdminClient } from "./supabase/server";
 import { Result, ok, err } from "./result";
 
+/**
+ * Represents a quick access item stored in the database.
+ */
 export interface QuickAccessItem {
   id: string;
   userId: string;
@@ -23,6 +35,10 @@ interface DbQuickAccessItem {
   updated_at: string;
 }
 
+/**
+ * Maps a database row to a QuickAccessItem object.
+ * Converts snake_case DB fields to camelCase and parses dates.
+ */
 function mapDbToItem(db: DbQuickAccessItem): QuickAccessItem {
   return {
     id: db.id,

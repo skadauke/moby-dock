@@ -1,11 +1,28 @@
+/**
+ * File List API Proxy
+ * 
+ * Server-side proxy for directory listing operations.
+ * 
+ * @module api/files/list
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 
+/** External file server URL */
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || 'https://files.skadauke.dev';
+/** Bearer token for file server authentication (server-side only) */
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || '';
 
-// Proxy directory listing requests to file server
+/**
+ * GET /api/files/list?dir=<dirpath>
+ * 
+ * Lists files and directories in a given path.
+ * 
+ * @param request - Next.js request with dir query parameter
+ * @returns JSON with files array and count or error
+ */
 export async function GET(request: NextRequest) {
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });

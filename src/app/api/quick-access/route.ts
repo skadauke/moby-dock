@@ -1,3 +1,12 @@
+/**
+ * Quick Access API Routes
+ * 
+ * Manages user's quick access file shortcuts. Supports listing and adding items.
+ * Items are persisted per-user in Supabase.
+ * 
+ * @module api/quick-access
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -7,6 +16,7 @@ import {
   initializeDefaultQuickAccess,
 } from "@/lib/quick-access-store";
 
+/** Home directory for default quick access paths */
 const HOME = process.env.HOME_DIR || "/Users/skadauke";
 
 /**

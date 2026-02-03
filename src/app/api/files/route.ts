@@ -1,11 +1,29 @@
+/**
+ * File API Proxy Routes
+ * 
+ * Server-side proxy for file operations. Keeps the file server token secure
+ * by never exposing it to the client. All requests require authentication.
+ * 
+ * @module api/files
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 
+/** External file server URL */
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || 'https://files.skadauke.dev';
+/** Bearer token for file server authentication (server-side only) */
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || '';
 
-// Proxy GET requests to file server (read file)
+/**
+ * GET /api/files?path=<filepath>
+ * 
+ * Reads a file from the file server. Returns file content, size, and modification time.
+ * 
+ * @param request - Next.js request with path query parameter
+ * @returns JSON with content, modifiedAt, and size or error
+ */
 export async function GET(request: NextRequest) {
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });
@@ -39,7 +57,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Proxy POST requests to file server (write file)
+/**
+ * POST /api/files
+ * 
+ * Writes content to a file on the file server.
+ * 
+ * @param request - Next.js request with JSON body containing path and content
+ * @returns JSON with success status or error
+ */
 export async function POST(request: NextRequest) {
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });
@@ -76,7 +101,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Proxy DELETE requests to file server
+/**
+ * DELETE /api/files?path=<filepath>
+ * 
+ * Deletes a file from the file server.
+ * 
+ * @param request - Next.js request with path query parameter
+ * @returns JSON with success status or error
+ */
 export async function DELETE(request: NextRequest) {
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });

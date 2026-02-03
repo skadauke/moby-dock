@@ -1,5 +1,10 @@
 /**
- * Date formatting utilities
+ * Date Formatting Utilities
+ * 
+ * Provides locale-aware date and time formatting functions with support for
+ * relative times (e.g., "5 minutes ago") and absolute dates with year display.
+ * 
+ * @module date-utils
  */
 
 /**
