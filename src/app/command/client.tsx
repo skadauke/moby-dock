@@ -169,7 +169,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   }, [persistTaskOrder]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-h-0">
       <CommandHeader
         onTaskCreated={handleTaskCreated}
         filter={filter}

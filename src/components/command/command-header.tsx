@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TaskModal } from "./task-modal";
@@ -32,6 +32,25 @@ export function CommandHeader({
   
   // Default creator for new tasks (could be enhanced with session info later)
   const defaultCreator: Creator = "STEPHAN";
+
+  // Open modal handler (also used by keyboard shortcut)
+  const openNewTaskModal = useCallback(() => {
+    setIsModalOpen(true);
+  }, []);
+
+  // Keyboard shortcut: Cmd/Ctrl+N for new task
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+N (Mac) or Ctrl+N (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault(); // Override browser's "New Window" behavior
+        openNewTaskModal();
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [openNewTaskModal]);
 
   return (
     <>
@@ -120,9 +139,10 @@ export function CommandHeader({
                 </Button>
               )}
               <Button
-                onClick={() => setIsModalOpen(true)}
+                onClick={openNewTaskModal}
                 size="sm"
                 className="h-8 bg-blue-600 hover:bg-blue-700"
+                title="New task (⌘N)"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 New

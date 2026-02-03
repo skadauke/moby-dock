@@ -1,9 +1,7 @@
 /**
  * File API client for communicating with the Moby Dock file server
+ * Uses server-side API routes to keep tokens secure
  */
-
-const FILE_SERVER_URL = process.env.NEXT_PUBLIC_FILE_SERVER_URL || 'https://files.skadauke.dev';
-const FILE_SERVER_TOKEN = process.env.NEXT_PUBLIC_FILE_SERVER_TOKEN || '';
 
 // Home directory - configured via env or defaults to /Users/skadauke
 const HOME = process.env.NEXT_PUBLIC_HOME_DIR || '/Users/skadauke';
@@ -28,10 +26,9 @@ interface ListResponse {
 }
 
 async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${FILE_SERVER_URL}${endpoint}`, {
+  const res = await fetch(endpoint, {
     ...options,
     headers: {
-      'Authorization': `Bearer ${FILE_SERVER_TOKEN}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },
@@ -46,7 +43,7 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
 }
 
 export async function listDirectory(dirPath: string): Promise<FileInfo[]> {
-  const data = await fetchApi<ListResponse>(`/files/list?dir=${encodeURIComponent(dirPath)}`);
+  const data = await fetchApi<ListResponse>(`/api/files/list?dir=${encodeURIComponent(dirPath)}`);
   return data.files.sort((a, b) => {
     // Directories first, then alphabetical
     if (a.isDirectory && !b.isDirectory) return -1;
@@ -56,18 +53,18 @@ export async function listDirectory(dirPath: string): Promise<FileInfo[]> {
 }
 
 export async function readFile(filePath: string): Promise<FileContent> {
-  return fetchApi<FileContent>(`/files?path=${encodeURIComponent(filePath)}`);
+  return fetchApi<FileContent>(`/api/files?path=${encodeURIComponent(filePath)}`);
 }
 
 export async function writeFile(filePath: string, content: string): Promise<void> {
-  await fetchApi('/files', {
+  await fetchApi('/api/files', {
     method: 'POST',
     body: JSON.stringify({ path: filePath, content }),
   });
 }
 
 export async function deleteFile(filePath: string): Promise<void> {
-  await fetchApi(`/files?path=${encodeURIComponent(filePath)}`, {
+  await fetchApi(`/api/files?path=${encodeURIComponent(filePath)}`, {
     method: 'DELETE',
   });
 }
@@ -86,9 +83,9 @@ export const QUICK_ACCESS_FILES = [
 
 // Base paths for file tree
 export const BASE_PATHS = [
-  { name: 'Workspace', path: `${HOME}/clawd` },
-  { name: 'Clawdbot', path: `${HOME}/.clawdbot` },
-  { name: 'Config', path: `${HOME}/.config/moby` },
+  { name: 'Workspace', path: `${HOME}/clawd`, description: '~/clawd' },
+  { name: 'Clawdbot', path: `${HOME}/.clawdbot`, description: '~/.clawdbot' },
+  { name: 'Config', path: `${HOME}/.config/moby`, description: '~/.config/moby' },
 ];
 
 // Get language for Monaco based on file extension
