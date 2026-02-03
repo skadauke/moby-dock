@@ -246,7 +246,7 @@ export function ConfigClient() {
             )}
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               onClick={reloadFile}
               disabled={!selectedPath || isReloading}
               className="h-8"
