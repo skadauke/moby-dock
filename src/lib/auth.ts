@@ -8,20 +8,17 @@ const ALLOWED_USERS = ["skadauke"];
 // Production URL for OAuth callbacks - must match GitHub OAuth app settings
 const PRODUCTION_URL = process.env.BETTER_AUTH_URL || "https://moby-dock.vercel.app";
 
-// Build trusted origins list including Vercel preview deployments
+// Trusted origins with wildcards for Vercel deployments
+// Safari iOS may send various origins, so we use wildcards for flexibility
 const trustedOriginsList = [
   PRODUCTION_URL,
   "https://moby-dock.vercel.app",
+  // Wildcard: trust ALL vercel.app subdomains (preview deployments)
+  "https://*.vercel.app",
   // Allow localhost for development
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ];
-
-// Add Vercel preview deployment pattern if we can detect it
-// Vercel preview URLs follow pattern: https://<project>-<hash>-<team>.vercel.app
-if (process.env.VERCEL_URL) {
-  trustedOriginsList.push(`https://${process.env.VERCEL_URL}`);
-}
 
 export const auth = betterAuth({
   // Always use production URL for OAuth callbacks
