@@ -124,6 +124,7 @@ export function ConfigClient() {
               key={base.path}
               basePath={base.path}
               baseName={base.name}
+              baseDescription={base.description}
               selectedPath={selectedPath}
               onSelectFile={handleSelectFile}
             />
