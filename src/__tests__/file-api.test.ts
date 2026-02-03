@@ -144,8 +144,8 @@ describe("BASE_PATHS", () => {
     const pathNames = BASE_PATHS.map(p => p.name);
     
     expect(pathNames).toContain("Workspace");
-    expect(pathNames).toContain("Clawdbot");
-    expect(pathNames).toContain("Config");
+    expect(pathNames).toContain("OpenClaw");
+    // Config removed - secrets now in ~/.openclaw/credentials/
   });
 
   it("all paths have required properties", () => {
@@ -157,7 +157,7 @@ describe("BASE_PATHS", () => {
     });
   });
 
-  it("has 3 base paths", () => {
-    expect(BASE_PATHS).toHaveLength(3);
+  it("has 2 base paths", () => {
+    expect(BASE_PATHS).toHaveLength(2);
   });
 });
