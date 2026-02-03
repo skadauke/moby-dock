@@ -16,6 +16,7 @@ interface FileInfo {
 interface FileTreeProps {
   basePath: string;
   baseName: string;
+  baseDescription?: string; // Shows underlying path in small gray text
   selectedPath: string | null;
   onSelectFile: (path: string) => void;
 }
@@ -101,7 +102,7 @@ function TreeNode({ file, level, selectedPath, onSelectFile }: TreeNodeProps) {
   );
 }
 
-export function FileTree({ basePath, baseName, selectedPath, onSelectFile }: FileTreeProps) {
+export function FileTree({ basePath, baseName, baseDescription, selectedPath, onSelectFile }: FileTreeProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
@@ -131,12 +132,17 @@ export function FileTree({ basePath, baseName, selectedPath, onSelectFile }: Fil
         className="w-full flex items-center gap-1 px-2 py-1.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800 rounded"
       >
         {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-zinc-500" />
+          <ChevronDown className="h-4 w-4 text-zinc-500 flex-shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-zinc-500" />
+          <ChevronRight className="h-4 w-4 text-zinc-500 flex-shrink-0" />
         )}
-        <Folder className="h-4 w-4 text-blue-400" />
-        <span>{baseName}</span>
+        <Folder className="h-4 w-4 text-blue-400 flex-shrink-0" />
+        <div className="flex flex-col items-start min-w-0">
+          <span className="truncate">{baseName}</span>
+          {baseDescription && (
+            <span className="text-[10px] text-zinc-500 font-normal truncate">{baseDescription}</span>
+          )}
+        </div>
       </button>
       {isOpen && (
         <div className="ml-2">

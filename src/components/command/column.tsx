@@ -18,11 +18,21 @@ interface ColumnProps {
 export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFlag }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
+  // Only show prominent blue highlight when column is empty
+  // When cards exist, show subtle border only to avoid visual clutter
+  const isEmpty = tasks.length === 0;
+  const showFullHighlight = isOver && isEmpty;
+  const showSubtleHighlight = isOver && !isEmpty;
+
   return (
     <div 
       ref={setNodeRef}
-      className={`flex flex-col h-full bg-zinc-900 rounded-lg border transition-colors ${
-        isOver ? "border-blue-500 bg-blue-500/5" : "border-zinc-800"
+      className={`flex flex-col h-full min-h-0 bg-zinc-900 rounded-lg border transition-colors ${
+        showFullHighlight 
+          ? "border-blue-500 bg-blue-500/5" 
+          : showSubtleHighlight 
+            ? "border-blue-500/50" 
+            : "border-zinc-800"
       }`}
     >
       <div className="flex items-center justify-between p-3 border-b border-zinc-800">
@@ -30,7 +40,7 @@ export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFla
         <span className="text-sm text-zinc-500">{tasks.length}</span>
       </div>
       
-      <ScrollArea className="flex-1 p-2">
+      <ScrollArea className="flex-1 min-h-0 p-2">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {tasks.map((task) => (

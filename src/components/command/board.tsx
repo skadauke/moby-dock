@@ -139,7 +139,7 @@ export function Board({
       onTaskStatusChange={handleTaskStatusChange}
       onTaskReorder={handleTaskReorder}
     >
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 h-full">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 h-full min-h-0">
         {COLUMNS.map((column) => (
           <Column
             key={column.id}

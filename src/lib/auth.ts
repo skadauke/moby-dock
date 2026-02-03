@@ -8,6 +8,21 @@ const ALLOWED_USERS = ["skadauke"];
 // Production URL for OAuth callbacks - must match GitHub OAuth app settings
 const PRODUCTION_URL = process.env.BETTER_AUTH_URL || "https://moby-dock.vercel.app";
 
+// Build trusted origins list including Vercel preview deployments
+const trustedOriginsList = [
+  PRODUCTION_URL,
+  "https://moby-dock.vercel.app",
+  // Allow localhost for development
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
+// Add Vercel preview deployment pattern if we can detect it
+// Vercel preview URLs follow pattern: https://<project>-<hash>-<team>.vercel.app
+if (process.env.VERCEL_URL) {
+  trustedOriginsList.push(`https://${process.env.VERCEL_URL}`);
+}
+
 export const auth = betterAuth({
   // Always use production URL for OAuth callbacks
   // This ensures GitHub OAuth works on preview deployments
@@ -15,11 +30,7 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   
   // Trust Vercel preview deployment origins for cross-origin auth requests
-  trustedOrigins: [
-    PRODUCTION_URL,
-    // Vercel preview deployments pattern - these need to be added dynamically
-    // or we use a wildcard approach via the advanced config
-  ],
+  trustedOrigins: trustedOriginsList,
   
   socialProviders: {
     github: {
@@ -50,12 +61,23 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    // Use secure cookies with SameSite=None for Safari compatibility
+    // Use secure cookies with SameSite=None for Safari/iOS compatibility
     useSecureCookies: true,
     // Allow cross-site cookies for preview deployments
     crossSubDomainCookies: {
       enabled: true,
       domain: ".vercel.app", // Share cookies across all vercel.app subdomains
+    },
+    // Explicitly set cookie attributes for iOS Safari compatibility
+    cookies: {
+      session_token: {
+        attributes: {
+          sameSite: "none" as const,
+          secure: true,
+          httpOnly: true,
+          path: "/",
+        },
+      },
     },
   },
   hooks: {

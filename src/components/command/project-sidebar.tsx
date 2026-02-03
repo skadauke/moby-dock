@@ -76,6 +76,7 @@ function ProjectItem({
       </div>
       <button
         onClick={onSelect}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
         className="flex-1 flex items-center gap-3 text-left min-w-0"
       >
         <div

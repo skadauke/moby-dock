@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { homedir } from "os";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "https://files.skadauke.dev";
-const FILE_SERVER_TOKEN = process.env.FILE_SERVER_TOKEN || "";
+const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 const HOME = process.env.HOME_DIR || homedir();
 
 const BASE_PATHS = [
@@ -90,6 +92,12 @@ async function searchInFile(filePath: string, query: string): Promise<SearchResu
  * Search across all workspace files
  */
 export async function GET(request: NextRequest) {
+  // Check authentication
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const query = request.nextUrl.searchParams.get("q");
   
   if (!query || query.length < 2) {
