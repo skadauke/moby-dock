@@ -4,7 +4,7 @@
  */
 
 // Home directory - configured via env or defaults to /Users/skadauke
-const HOME = process.env.NEXT_PUBLIC_HOME_DIR || '/Users/skadauke';
+export const HOME = process.env.NEXT_PUBLIC_HOME_DIR || '/Users/skadauke';
 
 interface FileInfo {
   name: string;

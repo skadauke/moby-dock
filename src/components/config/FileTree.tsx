@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ChevronRight, ChevronDown, Folder, File, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { ChevronRight, ChevronDown, Folder, File, RefreshCw, Plus } from "lucide-react";
 import { listDirectory } from "@/lib/file-api";
 import { cn } from "@/lib/utils";
 
@@ -16,9 +16,10 @@ interface FileInfo {
 interface FileTreeProps {
   basePath: string;
   baseName: string;
-  baseDescription?: string; // Shows underlying path in small gray text
+  baseDescription?: string;
   selectedPath: string | null;
   onSelectFile: (path: string) => void;
+  onAddToQuickAccess?: (path: string, name: string) => void;
 }
 
 interface TreeNodeProps {
@@ -26,12 +27,14 @@ interface TreeNodeProps {
   level: number;
   selectedPath: string | null;
   onSelectFile: (path: string) => void;
+  onAddToQuickAccess?: (path: string, name: string) => void;
 }
 
-function TreeNode({ file, level, selectedPath, onSelectFile }: TreeNodeProps) {
+function TreeNode({ file, level, selectedPath, onSelectFile, onAddToQuickAccess }: TreeNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [children, setChildren] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const isSelected = selectedPath === file.path;
 
   const loadChildren = async () => {
@@ -56,35 +59,74 @@ function TreeNode({ file, level, selectedPath, onSelectFile }: TreeNodeProps) {
     }
   };
 
+  // Native drag handlers for files only
+  const handleDragStart = (e: React.DragEvent) => {
+    if (file.isDirectory) {
+      e.preventDefault();
+      return;
+    }
+    setIsDragging(true);
+    e.dataTransfer.setData("text/plain", JSON.stringify({ path: file.path, name: file.name }));
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
   return (
     <div>
-      <button
-        onClick={handleClick}
+      <div
+        draggable={!file.isDirectory}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         className={cn(
-          "w-full flex items-center gap-1 px-2 py-1 text-sm text-left hover:bg-zinc-800 rounded transition-colors",
-          isSelected && "bg-zinc-800 text-blue-400"
+          "group flex items-center",
+          isDragging && "opacity-50"
         )}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
       >
-        {file.isDirectory ? (
-          <>
-            {isLoading ? (
-              <RefreshCw className="h-3.5 w-3.5 text-zinc-500 animate-spin" />
-            ) : isOpen ? (
-              <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 text-zinc-500" />
-            )}
-            <Folder className="h-4 w-4 text-zinc-400" />
-          </>
-        ) : (
-          <>
-            <span className="w-3.5" />
-            <File className="h-4 w-4 text-zinc-500" />
-          </>
+        <button
+          onClick={handleClick}
+          className={cn(
+            "flex-1 flex items-center gap-1 px-2 py-1 text-sm text-left hover:bg-zinc-800 rounded transition-colors",
+            isSelected && "bg-zinc-800 text-blue-400",
+            !file.isDirectory && "cursor-grab active:cursor-grabbing"
+          )}
+          style={{ paddingLeft: `${level * 12 + 8}px` }}
+        >
+          {file.isDirectory ? (
+            <>
+              {isLoading ? (
+                <RefreshCw className="h-3.5 w-3.5 text-zinc-500 animate-spin flex-shrink-0" />
+              ) : isOpen ? (
+                <ChevronDown className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+              )}
+              <Folder className="h-4 w-4 text-zinc-400 flex-shrink-0" />
+            </>
+          ) : (
+            <>
+              <span className="w-3.5 flex-shrink-0" />
+              <File className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+            </>
+          )}
+          <span className="truncate">{file.name}</span>
+        </button>
+        {/* Quick add button for files */}
+        {!file.isDirectory && onAddToQuickAccess && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddToQuickAccess(file.path, file.name);
+            }}
+            className="p-1 mr-1 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-blue-400 transition-opacity"
+            title="Add to Quick Access"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
         )}
-        <span className="truncate">{file.name}</span>
-      </button>
+      </div>
       {isOpen && children.length > 0 && (
         <div>
           {children.map((child) => (
@@ -94,6 +136,7 @@ function TreeNode({ file, level, selectedPath, onSelectFile }: TreeNodeProps) {
               level={level + 1}
               selectedPath={selectedPath}
               onSelectFile={onSelectFile}
+              onAddToQuickAccess={onAddToQuickAccess}
             />
           ))}
         </div>
@@ -102,7 +145,14 @@ function TreeNode({ file, level, selectedPath, onSelectFile }: TreeNodeProps) {
   );
 }
 
-export function FileTree({ basePath, baseName, baseDescription, selectedPath, onSelectFile }: FileTreeProps) {
+export function FileTree({
+  basePath,
+  baseName,
+  baseDescription,
+  selectedPath,
+  onSelectFile,
+  onAddToQuickAccess,
+}: FileTreeProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
@@ -158,6 +208,7 @@ export function FileTree({ basePath, baseName, baseDescription, selectedPath, on
                 level={1}
                 selectedPath={selectedPath}
                 onSelectFile={onSelectFile}
+                onAddToQuickAccess={onAddToQuickAccess}
               />
             ))
           )}

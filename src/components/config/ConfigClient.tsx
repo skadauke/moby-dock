@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Save, RefreshCw, RotateCcw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileTree } from "./FileTree";
 import { CodeEditor } from "./CodeEditor";
 import { QuickAccess } from "./QuickAccess";
 import { SearchPanel } from "./SearchPanel";
-import { readFile, writeFile, BASE_PATHS } from "@/lib/file-api";
+import { readFile, writeFile, BASE_PATHS, HOME } from "@/lib/file-api";
+import { addQuickAccessItem } from "@/lib/quick-access-local";
 
 export function ConfigClient() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -21,6 +22,9 @@ export function ConfigClient() {
 
   const [serverModifiedAt, setServerModifiedAt] = useState<string | null>(null);
   const [isReloading, setIsReloading] = useState(false);
+
+  // For Quick Access add
+  const [quickAccessKey, setQuickAccessKey] = useState(0);
 
   const hasChanges = content !== originalContent;
   const filename = selectedPath?.split("/").pop() || "";
@@ -46,7 +50,7 @@ export function ConfigClient() {
   // Reload file from server
   const reloadFile = useCallback(async () => {
     if (!selectedPath) return;
-    
+
     // Check for unsaved changes
     if (hasChanges) {
       // Fetch server version to check for conflicts
@@ -54,14 +58,14 @@ export function ConfigClient() {
       try {
         const data = await readFile(selectedPath);
         const serverChanged = serverModifiedAt && data.modifiedAt !== serverModifiedAt;
-        
+
         if (serverChanged) {
           // Both local and server have changes - conflict!
           const choice = confirm(
             "⚠️ Conflict detected!\n\n" +
-            "You have unsaved local changes, and the file has also been modified on the server.\n\n" +
-            "Click OK to discard your local changes and load the server version.\n" +
-            "Click Cancel to keep your local changes."
+              "You have unsaved local changes, and the file has also been modified on the server.\n\n" +
+              "Click OK to discard your local changes and load the server version.\n" +
+              "Click Cancel to keep your local changes."
           );
           if (!choice) {
             setIsReloading(false);
@@ -71,15 +75,15 @@ export function ConfigClient() {
           // Only local changes
           const choice = confirm(
             "You have unsaved changes.\n\n" +
-            "Click OK to discard them and reload.\n" +
-            "Click Cancel to keep editing."
+              "Click OK to discard them and reload.\n" +
+              "Click Cancel to keep editing."
           );
           if (!choice) {
             setIsReloading(false);
             return;
           }
         }
-        
+
         // Apply server version
         setOriginalContent(data.content);
         setContent(data.content);
@@ -136,14 +140,26 @@ export function ConfigClient() {
   }, []);
 
   // Handle file selection
-  const handleSelectFile = useCallback((path: string) => {
-    if (hasChanges) {
-      if (!confirm("You have unsaved changes. Discard them?")) {
-        return;
+  const handleSelectFile = useCallback(
+    (path: string) => {
+      if (hasChanges) {
+        if (!confirm("You have unsaved changes. Discard them?")) {
+          return;
+        }
       }
+      loadFile(path);
+    },
+    [hasChanges, loadFile]
+  );
+
+  // Handle add to Quick Access from FileTree
+  const handleAddToQuickAccess = useCallback((path: string, name: string) => {
+    const newItem = addQuickAccessItem(path, name);
+    if (newItem) {
+      // Force QuickAccess to re-render by updating key
+      setQuickAccessKey((k) => k + 1);
     }
-    loadFile(path);
-  }, [hasChanges, loadFile]);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -180,8 +196,10 @@ export function ConfigClient() {
 
           {/* Quick Access - drag files here from Browse to add */}
           <QuickAccess
+            key={quickAccessKey}
             selectedPath={selectedPath}
             onSelectFile={handleSelectFile}
+            homeDir={HOME}
           />
 
           {/* File Trees */}
@@ -196,6 +214,7 @@ export function ConfigClient() {
               baseDescription={base.description}
               selectedPath={selectedPath}
               onSelectFile={handleSelectFile}
+              onAddToQuickAccess={handleAddToQuickAccess}
             />
           ))}
         </div>
@@ -208,25 +227,17 @@ export function ConfigClient() {
           <div className="flex items-center gap-2 min-w-0">
             {selectedPath ? (
               <>
-                <span className="text-sm text-zinc-400 truncate">
-                  {selectedPath}
-                </span>
+                <span className="text-sm text-zinc-400 truncate">{selectedPath}</span>
                 {hasChanges && (
-                  <span className="text-xs text-amber-500 flex-shrink-0">
-                    (unsaved)
-                  </span>
+                  <span className="text-xs text-amber-500 flex-shrink-0">(unsaved)</span>
                 )}
               </>
             ) : (
-              <span className="text-sm text-zinc-500">
-                Select a file to edit
-              </span>
+              <span className="text-sm text-zinc-500">Select a file to edit</span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            {saveSuccess && (
-              <span className="text-xs text-green-500">Saved!</span>
-            )}
+            {saveSuccess && <span className="text-xs text-green-500">Saved!</span>}
             {error && (
               <span className="text-xs text-red-500 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />
@@ -291,19 +302,12 @@ export function ConfigClient() {
               <RefreshCw className="h-6 w-6 text-zinc-500 animate-spin" />
             </div>
           ) : selectedPath ? (
-            <CodeEditor
-              value={content}
-              filename={filename}
-              onChange={setContent}
-              onSave={saveFile}
-            />
+            <CodeEditor value={content} filename={filename} onChange={setContent} onSave={saveFile} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-zinc-500">
               <div className="text-6xl mb-4">📝</div>
               <p className="text-lg">Select a file from the sidebar</p>
-              <p className="text-sm mt-2">
-                Edit workspace configuration files
-              </p>
+              <p className="text-sm mt-2">Edit workspace configuration files</p>
             </div>
           )}
         </div>
