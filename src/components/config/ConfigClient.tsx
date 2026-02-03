@@ -148,18 +148,24 @@ export function ConfigClient() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      // Cmd/Ctrl+S to save
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        saveFile();
+        e.stopPropagation();
+        if (selectedPath && hasChanges) {
+          saveFile();
+        }
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
-        e.preventDefault(); // Override browser refresh
+      // Cmd/Ctrl+R to reload
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        e.stopPropagation();
         reloadFile();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [saveFile, reloadFile]);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [saveFile, reloadFile, selectedPath, hasChanges]);
 
   return (
     <div className="flex h-full">
