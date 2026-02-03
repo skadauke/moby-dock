@@ -21,7 +21,7 @@ export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFla
   return (
     <div 
       ref={setNodeRef}
-      className={`flex flex-col h-full bg-zinc-900 rounded-lg border transition-colors ${
+      className={`flex flex-col h-full min-h-0 bg-zinc-900 rounded-lg border transition-colors ${
         isOver ? "border-blue-500 bg-blue-500/5" : "border-zinc-800"
       }`}
     >
@@ -30,7 +30,7 @@ export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFla
         <span className="text-sm text-zinc-500">{tasks.length}</span>
       </div>
       
-      <ScrollArea className="flex-1 p-2">
+      <ScrollArea className="flex-1 min-h-0 p-2">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {tasks.map((task) => (
