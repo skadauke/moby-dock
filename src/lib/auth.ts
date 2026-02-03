@@ -61,24 +61,11 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    // Use secure cookies with SameSite=None for Safari/iOS compatibility
+    // Use secure cookies in production
     useSecureCookies: true,
-    // Allow cross-site cookies for preview deployments
-    crossSubDomainCookies: {
-      enabled: true,
-      domain: ".vercel.app", // Share cookies across all vercel.app subdomains
-    },
-    // Explicitly set cookie attributes for iOS Safari compatibility
-    cookies: {
-      session_token: {
-        attributes: {
-          sameSite: "none" as const,
-          secure: true,
-          httpOnly: true,
-          path: "/",
-        },
-      },
-    },
+    // NOTE: crossSubDomainCookies disabled because .vercel.app is a public suffix
+    // Browsers block cookies on public suffixes for security reasons
+    // Preview deployments will need to redirect to production for auth
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
