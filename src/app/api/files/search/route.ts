@@ -7,7 +7,7 @@ const HOME = process.env.HOME_DIR || homedir();
 
 const BASE_PATHS = [
   `${HOME}/clawd`,
-  `${HOME}/.clawdbot`,
+  `${HOME}/.openclaw`,
   `${HOME}/.config/moby`,
 ];
 

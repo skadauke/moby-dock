@@ -81,13 +81,13 @@ export const QUICK_ACCESS_FILES = [
   { name: 'USER.md', path: `${HOME}/clawd/USER.md`, description: 'User info' },
   { name: 'IDENTITY.md', path: `${HOME}/clawd/IDENTITY.md`, description: 'Name & avatar' },
   { name: 'MEMORY.md', path: `${HOME}/clawd/MEMORY.md`, description: 'Long-term memory' },
-  { name: 'clawdbot.json', path: `${HOME}/.clawdbot/clawdbot.json`, description: 'Gateway config' },
+  { name: 'openclaw.json', path: `${HOME}/.openclaw/openclaw.json`, description: 'Gateway config' },
 ];
 
 // Base paths for file tree
 export const BASE_PATHS = [
   { name: 'Workspace', path: `${HOME}/clawd` },
-  { name: 'Clawdbot', path: `${HOME}/.clawdbot` },
+  { name: 'OpenClaw', path: `${HOME}/.openclaw` },
   { name: 'Config', path: `${HOME}/.config/moby` },
 ];
 

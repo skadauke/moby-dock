@@ -118,7 +118,7 @@ describe("QUICK_ACCESS_FILES", () => {
     expect(fileNames).toContain("USER.md");
     expect(fileNames).toContain("IDENTITY.md");
     expect(fileNames).toContain("MEMORY.md");
-    expect(fileNames).toContain("clawdbot.json");
+    expect(fileNames).toContain("openclaw.json");
   });
 
   it("all files have required properties", () => {
@@ -132,9 +132,9 @@ describe("QUICK_ACCESS_FILES", () => {
     });
   });
 
-  it("paths contain clawd or clawdbot directories", () => {
+  it("paths contain clawd or openclaw directories", () => {
     QUICK_ACCESS_FILES.forEach(file => {
-      expect(file.path).toMatch(/clawd|clawdbot/);
+      expect(file.path).toMatch(/clawd|openclaw/);
     });
   });
 });
