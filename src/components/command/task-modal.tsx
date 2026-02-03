@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Task, Project, Priority, Creator, PRIORITIES, CREATORS } from "@/types/kanban";
+import { Task, Project, Priority, Creator, Status, PRIORITIES, CREATORS } from "@/types/kanban";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDateTime } from "@/lib/date-utils";
 
@@ -31,6 +31,7 @@ interface TaskModalProps {
   onTaskCreated: (task: Task) => void;
   defaultCreator?: Creator;
   defaultProjectId?: string | null;
+  defaultStatus?: Status;
 }
 
 export function TaskModal({
@@ -41,6 +42,7 @@ export function TaskModal({
   onTaskCreated,
   defaultCreator = "MOBY",
   defaultProjectId = null,
+  defaultStatus = "BACKLOG",
 }: TaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -118,6 +120,7 @@ export function TaskModal({
             priority: priority || undefined,
             creator,
             projectId: projectId || undefined,
+            status: defaultStatus,
           }),
         });
         
@@ -134,7 +137,7 @@ export function TaskModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [title, description, priority, creator, projectId, isEditing, task, isSubmitting, onTaskUpdated, onTaskCreated, onClose]);
+  }, [title, description, priority, creator, projectId, isEditing, task, isSubmitting, onTaskUpdated, onTaskCreated, onClose, defaultStatus]);
 
   // Keyboard shortcut: Cmd/Ctrl+Enter to submit
   useEffect(() => {
