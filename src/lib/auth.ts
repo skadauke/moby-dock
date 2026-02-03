@@ -55,9 +55,13 @@ export const auth = betterAuth({
     },
   },
   session: {
+    // Session expiry (7 days)
+    expiresIn: 60 * 60 * 24 * 7,
+    // Cookie cache - store session in cookie to avoid DB lookups
+    // Since we don't have a DB adapter, this IS our session storage
     cookieCache: {
       enabled: true,
-      maxAge: 60 * 5, // 5 minutes
+      maxAge: 60 * 60 * 24 * 7, // 7 days (match session expiry)
     },
   },
   advanced: {
