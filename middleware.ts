@@ -22,10 +22,10 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   const sessionCookie = getSessionCookie(request);
   const isLoggedIn = !!sessionCookie;
   const isLoginPage = request.nextUrl.pathname === "/login";
-  const isApiAuth = request.nextUrl.pathname.startsWith("/api/auth");
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api");
 
-  // Allow auth API routes
-  if (isApiAuth) {
+  // Allow all API routes (they have their own auth)
+  if (isApiRoute) {
     event.waitUntil(log.flush());
     return NextResponse.next();
   }
