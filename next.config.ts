@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withAxiom } from "next-axiom";
 
 const nextConfig: NextConfig = {
   // Capture build time at build (not runtime)
@@ -7,4 +8,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withAxiom(nextConfig);
