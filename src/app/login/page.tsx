@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -65,21 +64,33 @@ export default function LoginPage() {
       
       // On production: do the OAuth flow
       // Store returnUrl in sessionStorage for post-auth redirect (if external)
-      // callbackURL must be relative for Better Auth to accept it
       if (returnUrl && returnUrl.startsWith("http")) {
         sessionStorage.setItem("auth_return_url", returnUrl);
       }
       
-      const result = await authClient.signIn.social({
-        provider: "github",
-        callbackURL: "/command", // Always use relative path
-      });
+      // Get the OAuth URL from our server endpoint, then navigate directly
+      // This avoids Safari iOS blocking JS-initiated redirects
+      const response = await fetch(
+        `${PRODUCTION_URL}/api/auth/github-url?callbackURL=${encodeURIComponent("/command")}`,
+        { credentials: "include" }
+      );
       
-      // If we get here without redirect, something went wrong
-      if (result?.error) {
-        setError(result.error.message || "Sign in failed");
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "Failed to start sign in");
         setIsLoading(false);
+        return;
       }
+      
+      const data = await response.json();
+      if (data.url) {
+        // Direct navigation to GitHub OAuth URL - Safari allows this
+        window.location.href = data.url;
+        return;
+      }
+      
+      setError("Failed to get sign in URL");
+      setIsLoading(false);
     } catch (err) {
       console.error("Sign in error:", err);
       setError(err instanceof Error ? err.message : "Sign in failed. Please try again.");
