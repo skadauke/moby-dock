@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Task, Status } from "@/types/kanban";
 import { Board } from "@/components/command/board";
 import { TaskModal } from "@/components/command/task-modal";
@@ -12,6 +12,15 @@ interface CommandClientProps {
 }
 
 export function CommandClient({ initialTasks }: CommandClientProps) {
+  // Check for stored return URL (from preview deployment auth flow)
+  useEffect(() => {
+    const returnUrl = sessionStorage.getItem("auth_return_url");
+    if (returnUrl) {
+      sessionStorage.removeItem("auth_return_url");
+      // Redirect to preview deployment after successful auth
+      window.location.href = returnUrl;
+    }
+  }, []);
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);

@@ -64,12 +64,15 @@ export default function LoginPage() {
       }
       
       // On production: do the OAuth flow
-      // After auth, redirect to returnUrl (preview) or default to /command
-      const callbackURL = returnUrl || "/command";
+      // Store returnUrl in sessionStorage for post-auth redirect (if external)
+      // callbackURL must be relative for Better Auth to accept it
+      if (returnUrl && returnUrl.startsWith("http")) {
+        sessionStorage.setItem("auth_return_url", returnUrl);
+      }
       
       const result = await authClient.signIn.social({
         provider: "github",
-        callbackURL,
+        callbackURL: "/command", // Always use relative path
       });
       
       // If we get here without redirect, something went wrong
