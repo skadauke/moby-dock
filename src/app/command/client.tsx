@@ -15,6 +15,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTaskStatus, setNewTaskStatus] = useState<Status>("BACKLOG");
   const [filter, setFilter] = useState<FilterType>("all");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -82,6 +83,13 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingTask(null);
+    setNewTaskStatus("BACKLOG"); // Reset to default
+  };
+
+  const handleAddTask = (status: Status) => {
+    setEditingTask(null); // Ensure we're creating, not editing
+    setNewTaskStatus(status);
+    setIsModalOpen(true);
   };
 
   const handleTaskUpdated = (updatedTask: Task) => {
@@ -192,6 +200,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
             onDeleteTask={handleDeleteTask}
             onToggleFlag={handleToggleFlag}
             onEditTask={handleEditTask}
+            onAddTask={handleAddTask}
             onTaskStatusChange={handleTaskStatusChange}
             onTaskReorder={handleTaskReorder}
           />
@@ -204,6 +213,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
         task={editingTask}
         onTaskUpdated={handleTaskUpdated}
         onTaskCreated={handleTaskCreated}
+        defaultStatus={newTaskStatus}
       />
     </div>
   );

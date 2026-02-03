@@ -5,6 +5,8 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Task, Status } from "@/types/kanban";
 import { TaskCard } from "./task-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ColumnProps {
   id: Status;
@@ -13,9 +15,10 @@ interface ColumnProps {
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (taskId: string) => void;
   onToggleFlag?: (taskId: string) => void;
+  onAddTask?: (status: Status) => void;
 }
 
-export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFlag }: ColumnProps) {
+export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFlag, onAddTask }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   // Only show prominent blue highlight when column is empty
@@ -36,8 +39,21 @@ export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFla
       }`}
     >
       <div className="flex items-center justify-between p-3 border-b border-zinc-800">
-        <h2 className="font-semibold text-zinc-100">{title}</h2>
-        <span className="text-sm text-zinc-500">{tasks.length}</span>
+        <div className="flex items-center gap-2">
+          <h2 className="font-semibold text-zinc-100">{title}</h2>
+          <span className="text-xs text-zinc-500">({tasks.length})</span>
+        </div>
+        {onAddTask && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-zinc-400 hover:text-zinc-100"
+            onClick={() => onAddTask(id)}
+            aria-label={`Add task to ${title}`}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
       </div>
       
       <ScrollArea className="flex-1 min-h-0">

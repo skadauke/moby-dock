@@ -10,6 +10,7 @@ interface BoardProps {
   onDeleteTask?: (taskId: string) => void;
   onToggleFlag?: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
+  onAddTask?: (status: Status) => void;
   onTaskStatusChange?: (taskId: string, newStatus: Status, newPosition: number) => void;
   onTaskReorder?: (taskId: string, newPosition: number) => void;
 }
@@ -19,6 +20,7 @@ export function Board({
   onDeleteTask,
   onToggleFlag,
   onEditTask,
+  onAddTask,
   onTaskStatusChange,
   onTaskReorder,
 }: BoardProps) {
@@ -149,6 +151,7 @@ export function Board({
             onEditTask={onEditTask}
             onDeleteTask={handleDeleteTask}
             onToggleFlag={handleToggleFlag}
+            onAddTask={onAddTask}
           />
         ))}
       </div>

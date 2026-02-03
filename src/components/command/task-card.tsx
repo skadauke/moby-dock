@@ -65,7 +65,7 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
       onClick={handleCardClick}
       className={`cursor-grab active:cursor-grabbing border-zinc-700 hover:border-zinc-600 transition-all hover:scale-[1.02] ${
         isDone ? "bg-zinc-900 opacity-60" : "bg-zinc-800"
-      } ${task.needsReview ? "ring-2 ring-amber-500/50" : ""}`}
+      } ${task.needsReview ? "ring-2 ring-amber-500/70 ring-offset-1 ring-offset-zinc-900" : ""}`}
     >
       <CardContent className="p-3">
         {/* Header row: creator + title + menu */}
