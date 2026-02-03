@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
 export function proxy(request: NextRequest) {
+  // Skip auth for preview deployments (URLs are obscure/temporary)
+  const isPreview = process.env.VERCEL_ENV === "preview";
+  if (isPreview) {
+    return NextResponse.next();
+  }
+
   const sessionCookie = getSessionCookie(request);
   const isLoggedIn = !!sessionCookie;
   const isLoginPage = request.nextUrl.pathname === "/login";
