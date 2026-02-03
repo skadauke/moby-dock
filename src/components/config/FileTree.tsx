@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { ChevronRight, ChevronDown, Folder, File, RefreshCw, Plus } from "lucide-react";
 import { listDirectory } from "@/lib/file-api";
 import { cn } from "@/lib/utils";

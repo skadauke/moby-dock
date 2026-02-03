@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Save, RefreshCw, RotateCcw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileTree } from "./FileTree";

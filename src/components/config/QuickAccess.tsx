@@ -241,6 +241,15 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
+  // Combine refs - must be before any conditional returns
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      (dropZoneRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      setDropRef(node);
+    },
+    [setDropRef]
+  );
+
   if (isLoading) {
     return (
       <div className="mb-4">
@@ -253,15 +262,6 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
       </div>
     );
   }
-
-  // Combine refs
-  const setRefs = useCallback(
-    (node: HTMLDivElement | null) => {
-      (dropZoneRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
-      setDropRef(node);
-    },
-    [setDropRef]
-  );
 
   return (
     <div
