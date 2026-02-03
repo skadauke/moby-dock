@@ -80,10 +80,7 @@ function TreeNode({ file, level, selectedPath, onSelectFile, onAddToQuickAccess 
         draggable={!file.isDirectory}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-        className={cn(
-          "group flex items-center",
-          isDragging && "opacity-50"
-        )}
+        className={cn("group flex items-center", isDragging && "opacity-50")}
       >
         <button
           onClick={handleClick}
@@ -160,6 +157,7 @@ export function FileTree({
 
   useEffect(() => {
     loadRoot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePath]);
 
   const loadRoot = async () => {

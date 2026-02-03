@@ -19,20 +19,21 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FileText, GripVertical, X } from "lucide-react";
+import { FileText, GripVertical, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  QuickAccessItem,
-  loadQuickAccessItems,
-  saveQuickAccessItems,
-  addQuickAccessItem as addItem,
-  removeQuickAccessItem as removeItem,
-} from "@/lib/quick-access-local";
+
+export interface QuickAccessItem {
+  id: string;
+  filePath: string;
+  fileName: string;
+  description: string | null;
+  position: number;
+}
 
 interface QuickAccessProps {
   selectedPath: string | null;
   onSelectFile: (path: string) => void;
-  homeDir: string;
+  onItemAdded?: () => void; // Callback when item is added externally
 }
 
 interface SortableItemProps {
@@ -120,9 +121,10 @@ function DragOverlayItem({ item }: { item: QuickAccessItem }) {
   );
 }
 
-export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccessProps) {
+export function QuickAccess({ selectedPath, onSelectFile, onItemAdded }: QuickAccessProps) {
   const [items, setItems] = useState<QuickAccessItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeItem, setActiveItem] = useState<QuickAccessItem | null>(null);
   const [isOverDropZone, setIsOverDropZone] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -138,6 +140,25 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
     id: "quick-access-drop",
     data: { type: "quick-access" },
   });
+
+  // Fetch items on mount
+  useEffect(() => {
+    fetchItems();
+  }, []);
+
+  const fetchItems = async () => {
+    try {
+      const res = await fetch("/api/quick-access");
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      setItems(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Native HTML5 drag-and-drop handlers
   const handleNativeDragOver = useCallback((e: React.DragEvent) => {
@@ -165,7 +186,7 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
     }
   }, []);
 
-  const handleNativeDrop = useCallback((e: React.DragEvent) => {
+  const handleNativeDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsOverDropZone(false);
@@ -175,10 +196,7 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
       if (data) {
         const { path, name } = JSON.parse(data);
         if (path && name) {
-          const newItem = addItem(path, name);
-          if (newItem) {
-            setItems((prev) => [...prev, newItem]);
-          }
+          await addItem(path, name);
         }
       }
     } catch (err) {
@@ -186,23 +204,29 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
     }
   }, []);
 
-  // Load items on mount
-  useEffect(() => {
-    const loadItems = () => {
-      const stored = loadQuickAccessItems();
-      if (stored.length === 0) {
-        // Initialize with defaults
-        const defaults = getDefaultItems(homeDir);
-        saveQuickAccessItems(defaults);
-        setItems(defaults);
-      } else {
-        setItems(stored);
-      }
-      setIsLoading(false);
-    };
+  const addItem = async (filePath: string, fileName: string) => {
+    // Check if already exists
+    if (items.some((i) => i.filePath === filePath)) {
+      return; // Already in list
+    }
 
-    loadItems();
-  }, [homeDir]);
+    try {
+      const res = await fetch("/api/quick-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath, fileName }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add");
+      }
+      const newItem = await res.json();
+      setItems((prev) => [...prev, newItem]);
+      onItemAdded?.();
+    } catch (err) {
+      console.error("Failed to add to Quick Access:", err);
+    }
+  };
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -214,7 +238,7 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
   );
 
   const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
+    async (event: DragEndEvent) => {
       setActiveItem(null);
       const { active, over } = event;
 
@@ -225,23 +249,48 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
 
       if (oldIndex === -1 || newIndex === -1) return;
 
-      // Reorder and persist
-      const reordered = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
-        ...item,
-        position: index,
-      }));
+      // Optimistic update
+      const reordered = arrayMove(items, oldIndex, newIndex);
       setItems(reordered);
-      saveQuickAccessItems(reordered);
+
+      // Persist to server
+      try {
+        const res = await fetch("/api/quick-access/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemIds: reordered.map((i) => i.id) }),
+        });
+        if (!res.ok) throw new Error("Failed to reorder");
+      } catch {
+        // Revert on error
+        fetchItems();
+      }
     },
     [items]
   );
 
-  const handleRemove = useCallback((id: string) => {
-    removeItem(id);
+  const handleRemove = useCallback(async (id: string) => {
+    // Optimistic update
     setItems((prev) => prev.filter((i) => i.id !== id));
+
+    try {
+      const res = await fetch(`/api/quick-access/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to remove");
+    } catch {
+      // Revert on error
+      fetchItems();
+    }
   }, []);
 
-  // Combine refs - must be before any conditional returns
+  // Expose the add handler for parent components (via (+) button)
+  useEffect(() => {
+    (window as unknown as { __quickAccessAdd?: typeof addItem }).__quickAccessAdd = addItem;
+    return () => {
+      delete (window as unknown as { __quickAccessAdd?: typeof addItem }).__quickAccessAdd;
+    };
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Combine refs for drop zone
   const setRefs = useCallback(
     (node: HTMLDivElement | null) => {
       (dropZoneRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -257,8 +306,19 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
           Quick Access
         </h3>
         <div className="flex items-center justify-center py-4">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent" />
+          <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mb-4">
+        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-2 mb-2">
+          Quick Access
+        </h3>
+        <div className="text-xs text-red-400 px-2">{error}</div>
       </div>
     );
   }
@@ -267,7 +327,7 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
     <div
       className={cn(
         "mb-4 p-1 rounded-lg transition-all",
-        isOverDropZone && "bg-blue-500/10 ring-2 ring-blue-500/50"
+        (isOverDropZone || isOver) && "bg-blue-500/10 ring-2 ring-blue-500/50"
       )}
       ref={setRefs}
       onDragOver={handleNativeDragOver}
@@ -286,12 +346,7 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-          <div
-            className={cn(
-              "space-y-0.5 rounded transition-colors min-h-[40px]",
-              isOver && "bg-blue-500/10 ring-1 ring-blue-500/50"
-            )}
-          >
+          <div className="space-y-0.5 rounded transition-colors min-h-[40px]">
             {items.map((item) => (
               <SortableItem
                 key={item.id}
@@ -309,34 +364,8 @@ export function QuickAccess({ selectedPath, onSelectFile, homeDir }: QuickAccess
           </div>
         </SortableContext>
 
-        <DragOverlay>
-          {activeItem && <DragOverlayItem item={activeItem} />}
-        </DragOverlay>
+        <DragOverlay>{activeItem && <DragOverlayItem item={activeItem} />}</DragOverlay>
       </DndContext>
     </div>
   );
 }
-
-// Helper to get default items
-function getDefaultItems(homeDir: string): QuickAccessItem[] {
-  const defaults = [
-    { name: "SOUL.md", path: `${homeDir}/clawd/SOUL.md`, description: "Personality & persona" },
-    { name: "AGENTS.md", path: `${homeDir}/clawd/AGENTS.md`, description: "Workspace rules" },
-    { name: "HEARTBEAT.md", path: `${homeDir}/clawd/HEARTBEAT.md`, description: "Periodic checks" },
-    { name: "TOOLS.md", path: `${homeDir}/clawd/TOOLS.md`, description: "Tool settings" },
-    { name: "USER.md", path: `${homeDir}/clawd/USER.md`, description: "User info" },
-    { name: "IDENTITY.md", path: `${homeDir}/clawd/IDENTITY.md`, description: "Name & avatar" },
-    { name: "MEMORY.md", path: `${homeDir}/clawd/MEMORY.md`, description: "Long-term memory" },
-    { name: "openclaw.json", path: `${homeDir}/.openclaw/openclaw.json`, description: "Gateway config" },
-  ];
-
-  return defaults.map((item, index) => ({
-    id: `qa-default-${index}`,
-    filePath: item.path,
-    fileName: item.name,
-    description: item.description,
-    position: index,
-  }));
-}
-
-export type { QuickAccessItem };
