@@ -7,7 +7,7 @@ import { FileTree } from "./FileTree";
 import { CodeEditor } from "./CodeEditor";
 import { QuickAccess } from "./QuickAccess";
 import { SearchPanel } from "./SearchPanel";
-import { readFile, writeFile, QUICK_ACCESS_FILES, BASE_PATHS } from "@/lib/file-api";
+import { readFile, writeFile, BASE_PATHS } from "@/lib/file-api";
 
 export function ConfigClient() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -18,6 +18,9 @@ export function ConfigClient() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const [serverModifiedAt, setServerModifiedAt] = useState<string | null>(null);
+  const [isReloading, setIsReloading] = useState(false);
 
   const hasChanges = content !== originalContent;
   const filename = selectedPath?.split("/").pop() || "";
@@ -32,12 +35,66 @@ export function ConfigClient() {
       setOriginalContent(data.content);
       setContent(data.content);
       setSelectedPath(path);
+      setServerModifiedAt(data.modifiedAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load file");
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  // Reload file from server
+  const reloadFile = useCallback(async () => {
+    if (!selectedPath) return;
+    
+    // Check for unsaved changes
+    if (hasChanges) {
+      // Fetch server version to check for conflicts
+      setIsReloading(true);
+      try {
+        const data = await readFile(selectedPath);
+        const serverChanged = serverModifiedAt && data.modifiedAt !== serverModifiedAt;
+        
+        if (serverChanged) {
+          // Both local and server have changes - conflict!
+          const choice = confirm(
+            "⚠️ Conflict detected!\n\n" +
+            "You have unsaved local changes, and the file has also been modified on the server.\n\n" +
+            "Click OK to discard your local changes and load the server version.\n" +
+            "Click Cancel to keep your local changes."
+          );
+          if (!choice) {
+            setIsReloading(false);
+            return;
+          }
+        } else {
+          // Only local changes
+          const choice = confirm(
+            "You have unsaved changes.\n\n" +
+            "Click OK to discard them and reload.\n" +
+            "Click Cancel to keep editing."
+          );
+          if (!choice) {
+            setIsReloading(false);
+            return;
+          }
+        }
+        
+        // Apply server version
+        setOriginalContent(data.content);
+        setContent(data.content);
+        setServerModifiedAt(data.modifiedAt);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reload file");
+      } finally {
+        setIsReloading(false);
+      }
+    } else {
+      // No local changes - just reload
+      loadFile(selectedPath);
+    }
+  }, [selectedPath, hasChanges, serverModifiedAt, loadFile]);
 
   // Save file
   const saveFile = useCallback(async () => {
@@ -92,10 +149,14 @@ export function ConfigClient() {
         e.preventDefault();
         saveFile();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+        e.preventDefault(); // Override browser refresh
+        reloadFile();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [saveFile]);
+  }, [saveFile, reloadFile]);
 
   return (
     <div className="flex h-full">
@@ -108,9 +169,8 @@ export function ConfigClient() {
           {/* Search */}
           <SearchPanel onSelectResult={handleSelectFile} />
 
-          {/* Quick Access */}
+          {/* Quick Access - drag files here from Browse to add */}
           <QuickAccess
-            items={QUICK_ACCESS_FILES}
             selectedPath={selectedPath}
             onSelectFile={handleSelectFile}
           />
@@ -181,6 +241,22 @@ export function ConfigClient() {
                 <span className="ml-1">Restart Gateway</span>
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={reloadFile}
+              disabled={!selectedPath || isReloading}
+              className="h-8"
+              title="Reload file from server (⌘R)"
+            >
+              {isReloading ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
+              <span className="ml-1">Reload</span>
+              <span className="ml-1 text-xs text-zinc-500">⌘R</span>
+            </Button>
             <Button
               size="sm"
               variant="outline"
