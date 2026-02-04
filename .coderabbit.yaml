@@ -1,0 +1,17 @@
+# CodeRabbit Configuration
+# https://docs.coderabbit.ai/configuration
+
+reviews:
+  auto_review:
+    enabled: true
+    # Skip review when these labels are present
+    ignore_labels:
+      - skip-review
+    drafts: false
+
+  path_instructions:
+    - path: "**/*.md"
+      instructions: "Focus on clarity, grammar, and accuracy. Light touch for docs."
+
+chat:
+  auto_reply: true
