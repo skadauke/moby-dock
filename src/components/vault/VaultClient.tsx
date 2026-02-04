@@ -40,7 +40,20 @@ import {
   Check,
   RefreshCw,
   KeyRound,
+  Play,
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from "lucide-react";
+
+interface TestResult {
+  success: boolean;
+  status: number;
+  message: string;
+  testedAt: string;
+  durationMs: number;
+}
 
 interface MaskedCredential {
   id: string;
@@ -60,6 +73,8 @@ interface MaskedCredential {
   hasAnonKey: boolean;
   hasServiceRoleKey: boolean;
   hasAuthToken: boolean;
+  hasTest: boolean;
+  lastTestResult?: TestResult;
 }
 
 interface FullCredential extends MaskedCredential {
@@ -95,6 +110,8 @@ export function VaultClient() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [testingCredential, setTestingCredential] = useState<string | null>(null);
+  const [generatingTest, setGeneratingTest] = useState<string | null>(null);
   const log = useLogger();
 
   // Fetch credentials
@@ -197,6 +214,77 @@ export function VaultClient() {
       setActionError(errorMsg);
       setDeleteConfirm(null);
       setTimeout(() => setActionError(null), 3000);
+    }
+  };
+
+  // Test a credential
+  const testCredential = async (id: string) => {
+    try {
+      setTestingCredential(id);
+      setActionError(null);
+      const res = await fetch("/api/vault/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        // Check if we need to generate a test config
+        if (data.needsGeneration) {
+          // Automatically generate test config
+          await generateTestConfig(id);
+          return;
+        }
+        throw new Error(data.message || data.error || "Test failed");
+      }
+      
+      // Update credential with test result
+      setCredentials(prev => prev.map(c => 
+        c.id === id ? { ...c, lastTestResult: data.result, hasTest: true } : c
+      ));
+      log.info("Credential test completed", { id, success: data.result.success });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Test failed";
+      log.error("Credential test failed", { id, error: errorMsg });
+      setActionError(errorMsg);
+      setTimeout(() => setActionError(null), 5000);
+    } finally {
+      setTestingCredential(null);
+    }
+  };
+
+  // Generate test config via AI
+  const generateTestConfig = async (id: string) => {
+    try {
+      setGeneratingTest(id);
+      setActionError(null);
+      const res = await fetch("/api/ai/generate-test-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, save: true }),
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || data.error || "Failed to generate test");
+      }
+      
+      // Update credential to show it has a test now
+      setCredentials(prev => prev.map(c => 
+        c.id === id ? { ...c, hasTest: true } : c
+      ));
+      log.info("Test config generated", { id });
+      
+      // Now run the test
+      await testCredential(id);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to generate test";
+      log.error("Failed to generate test config", { id, error: errorMsg });
+      setActionError(errorMsg);
+      setTimeout(() => setActionError(null), 5000);
+    } finally {
+      setGeneratingTest(null);
     }
   };
 
@@ -329,13 +417,30 @@ export function VaultClient() {
                         {cred.id}
                       </CardDescription>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
                       <Badge
                         variant="outline"
                         className="text-xs bg-zinc-800 border-zinc-700"
                       >
                         {cred.type}
                       </Badge>
+                      {/* Test status badge */}
+                      {cred.lastTestResult && (
+                        <Badge 
+                          className={`text-xs ${
+                            cred.lastTestResult.success 
+                              ? "bg-green-500/20 text-green-300 border-green-500/50" 
+                              : "bg-red-500/20 text-red-300 border-red-500/50"
+                          }`}
+                        >
+                          {cred.lastTestResult.success ? (
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                          ) : (
+                            <XCircle className="h-3 w-3 mr-1" />
+                          )}
+                          {cred.lastTestResult.success ? "Valid" : "Invalid"}
+                        </Badge>
+                      )}
                       {expired && (
                         <Badge variant="destructive" className="text-xs">
                           Expired
@@ -414,6 +519,35 @@ export function VaultClient() {
                         </>
                       )}
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => testCredential(cred.id)}
+                      disabled={testingCredential === cred.id || generatingTest === cred.id}
+                      className="h-7 text-xs"
+                    >
+                      {testingCredential === cred.id ? (
+                        <>
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          Testing...
+                        </>
+                      ) : generatingTest === cred.id ? (
+                        <>
+                          <Sparkles className="h-3 w-3 mr-1 animate-pulse" />
+                          Generating...
+                        </>
+                      ) : cred.hasTest ? (
+                        <>
+                          <Play className="h-3 w-3 mr-1" />
+                          Test
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          Test
+                        </>
+                      )}
+                    </Button>
                     <div className="flex-1" />
                     <Button
                       variant="ghost"
@@ -425,10 +559,22 @@ export function VaultClient() {
                     </Button>
                   </div>
 
-                  {/* Dates */}
-                  <div className="flex items-center justify-between mt-2 text-xs text-zinc-600">
-                    <span>Created: {cred.created}</span>
-                    {cred.expires && <span>Expires: {cred.expires}</span>}
+                  {/* Dates and test info */}
+                  <div className="flex flex-col gap-1 mt-2 text-xs text-zinc-600">
+                    <div className="flex items-center justify-between">
+                      <span>Created: {cred.created}</span>
+                      {cred.expires && <span>Expires: {cred.expires}</span>}
+                    </div>
+                    {cred.lastTestResult && (
+                      <div className="flex items-center justify-between">
+                        <span>
+                          Last test: {new Date(cred.lastTestResult.testedAt).toLocaleDateString()}
+                        </span>
+                        <span className={cred.lastTestResult.success ? "text-green-500" : "text-red-500"}>
+                          {cred.lastTestResult.message}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -558,6 +704,7 @@ function AddSecretModal({
         hasAnonKey: false,
         hasServiceRoleKey: false,
         hasAuthToken: false,
+        hasTest: false,
       });
 
       // Reset form

@@ -2,39 +2,11 @@ import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import type { Credential, SecretsFile } from "@/lib/vault";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 const SECRETS_PATH = "~/.openclaw/credentials/secrets.json";
-
-interface Credential {
-  value?: string;
-  client_id?: string;
-  client_secret?: string;
-  url?: string;
-  anon_key?: string;
-  service_role_key?: string;
-  auth_token?: string;
-  type: string;
-  service: string;
-  account?: string;
-  email?: string;
-  scopes?: string[];
-  project?: string;
-  expires: string | null;
-  created: string;
-  used_by: string[];
-  notes?: string;
-}
-
-interface SecretsFile {
-  credentials: Record<string, Credential>;
-  _meta: {
-    version: number;
-    updated: string;
-    check_expiry_days_before: number;
-  };
-}
 
 // GET /api/vault/secrets - List all secrets (values masked)
 export async function GET() {
@@ -97,6 +69,9 @@ export async function GET() {
         hasAnonKey: !!cred.anon_key,
         hasServiceRoleKey: !!cred.service_role_key,
         hasAuthToken: !!cred.auth_token,
+        // Test configuration status
+        hasTest: !!cred.test,
+        lastTestResult: cred.lastTestResult,
       })
     );
 
