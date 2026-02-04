@@ -1,16 +1,39 @@
 import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 import { Logger } from "next-axiom";
+import {
+  validateCsrfOrigin,
+  shouldCheckCsrf,
+  isMutationMethod,
+} from "@/lib/csrf";
 
 export async function middleware(request: NextRequest, event: NextFetchEvent) {
   const log = new Logger({ source: "middleware" });
-  
+  const pathname = request.nextUrl.pathname;
+
   // Log the request
   log.info("Request", {
     method: request.method,
-    path: request.nextUrl.pathname,
+    path: pathname,
     userAgent: request.headers.get("user-agent")?.slice(0, 100),
   });
+
+  // CSRF protection for mutation requests on API routes
+  if (isMutationMethod(request.method) && shouldCheckCsrf(pathname)) {
+    const csrfResult = validateCsrfOrigin(request);
+    if (!csrfResult.valid) {
+      log.warn("CSRF validation failed", {
+        path: pathname,
+        method: request.method,
+        error: csrfResult.error,
+      });
+      event.waitUntil(log.flush());
+      return NextResponse.json(
+        { error: "CSRF validation failed" },
+        { status: 403 }
+      );
+    }
+  }
 
   // Skip auth for preview deployments (URLs are obscure/temporary)
   const isPreview = process.env.VERCEL_ENV === "preview";
@@ -21,8 +44,8 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
 
   const sessionCookie = getSessionCookie(request);
   const isLoggedIn = !!sessionCookie;
-  const isLoginPage = request.nextUrl.pathname === "/login";
-  const isApiRoute = request.nextUrl.pathname.startsWith("/api");
+  const isLoginPage = pathname === "/login";
+  const isApiRoute = pathname.startsWith("/api");
 
   // Allow all API routes (they have their own auth)
   if (isApiRoute) {
