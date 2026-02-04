@@ -3,6 +3,7 @@ name: PR Checks
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -10,6 +11,8 @@ jobs:
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
+    # Skip if 'skip-review' label is present
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-review') }}
     steps:
       - uses: actions/checkout@v4
       
@@ -34,6 +37,8 @@ jobs:
   test:
     name: Tests & Coverage
     runs-on: ubuntu-latest
+    # Skip if 'skip-review' label is present
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-review') }}
     steps:
       - uses: actions/checkout@v4
       
@@ -60,6 +65,8 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    # Skip if 'skip-review' label is present
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-review') }}
     steps:
       - uses: actions/checkout@v4
       
@@ -83,6 +90,8 @@ jobs:
   repo-health:
     name: Repo Health
     runs-on: ubuntu-latest
+    # Skip if 'skip-review' label is present
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-review') }}
     steps:
       - uses: actions/checkout@v4
       
