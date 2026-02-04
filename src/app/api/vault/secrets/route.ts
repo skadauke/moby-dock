@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
-const FILE_SERVER_TOKEN = process.env.FILE_SERVER_TOKEN || "";
+const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 const SECRETS_PATH = "~/.openclaw/credentials/secrets.json";
 
 interface Credential {
@@ -143,12 +143,44 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { id, ...credential } = body;
-
-    if (!id) {
+    
+    // Input validation
+    if (!body || typeof body !== "object") {
       await log.flush();
-      return NextResponse.json({ error: "ID is required" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
+    
+    const { id, type, service, value, used_by, ...rest } = body;
+
+    if (!id || typeof id !== "string") {
+      await log.flush();
+      return NextResponse.json({ error: "ID is required and must be a string" }, { status: 400 });
+    }
+    
+    if (!type || typeof type !== "string") {
+      await log.flush();
+      return NextResponse.json({ error: "Type is required and must be a string" }, { status: 400 });
+    }
+    
+    if (!service || typeof service !== "string") {
+      await log.flush();
+      return NextResponse.json({ error: "Service is required and must be a string" }, { status: 400 });
+    }
+    
+    // Validate used_by is an array if provided
+    if (used_by !== undefined && !Array.isArray(used_by)) {
+      await log.flush();
+      return NextResponse.json({ error: "used_by must be an array" }, { status: 400 });
+    }
+    
+    // Build validated credential object
+    const credential = {
+      type,
+      service,
+      value,
+      used_by: used_by || [],
+      ...rest,
+    };
 
     // Read existing secrets
     const res = await fetch(

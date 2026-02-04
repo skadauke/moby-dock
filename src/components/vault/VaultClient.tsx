@@ -86,6 +86,7 @@ const CREDENTIAL_TYPES = [
 
 export function VaultClient() {
   const [credentials, setCredentials] = useState<MaskedCredential[]>([]);
+  const [expiryWarningDays, setExpiryWarningDays] = useState(30); // Default, updated from meta
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, FullCredential>>({});
@@ -103,6 +104,12 @@ export function VaultClient() {
       if (!res.ok) throw new Error("Failed to fetch secrets");
       const data = await res.json();
       setCredentials(data.credentials);
+      // Use expiry warning days from secrets file meta if available
+      if (data.meta?.check_expiry_days_before) {
+        setExpiryWarningDays(data.meta.check_expiry_days_before);
+      }
+      // Clear revealed secrets on refresh to avoid stale cached values
+      setRevealedSecrets({});
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load secrets");
@@ -120,10 +127,12 @@ export function VaultClient() {
   // Reveal a secret
   const revealSecret = async (id: string) => {
     if (revealedSecrets[id]) {
-      // Already revealed, hide it
-      const newRevealed = { ...revealedSecrets };
-      delete newRevealed[id];
-      setRevealedSecrets(newRevealed);
+      // Already revealed, hide it - use functional update
+      setRevealedSecrets(prev => {
+        const newRevealed = { ...prev };
+        delete newRevealed[id];
+        return newRevealed;
+      });
       return;
     }
 
@@ -131,17 +140,26 @@ export function VaultClient() {
       const res = await fetch(`/api/vault/secrets/${encodeURIComponent(id)}`);
       if (!res.ok) throw new Error("Failed to fetch secret");
       const data = await res.json();
-      setRevealedSecrets({ ...revealedSecrets, [id]: data });
+      // Use functional update to avoid stale closure
+      setRevealedSecrets(prev => ({ ...prev, [id]: data }));
     } catch (err) {
       log.error("Failed to reveal secret", { id, error: err instanceof Error ? err.message : "Unknown" });
     }
   };
 
-  // Copy to clipboard
+  // Copy to clipboard with error handling
   const copyToClipboard = async (text: string, fieldId: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedField(fieldId);
-    setTimeout(() => setCopiedField(null), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      log.error("Failed to copy to clipboard", { 
+        error: err instanceof Error ? err.message : "Unknown" 
+      });
+      // Fallback: select text for manual copy (if in a text field)
+      // For now, just log the error silently
+    }
   };
 
   // Delete credential
@@ -151,7 +169,14 @@ export function VaultClient() {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete");
-      setCredentials(credentials.filter((c) => c.id !== id));
+      // Use functional updates to avoid stale closures
+      setCredentials(prev => prev.filter((c) => c.id !== id));
+      // Clear revealed secret for deleted credential
+      setRevealedSecrets(prev => {
+        const newRevealed = { ...prev };
+        delete newRevealed[id];
+        return newRevealed;
+      });
       setDeleteConfirm(null);
       log.info("Credential deleted", { id });
     } catch (err) {
@@ -159,14 +184,14 @@ export function VaultClient() {
     }
   };
 
-  // Check if credential is expiring soon
-  const isExpiringSoon = (expires: string | null) => {
+  // Check if credential is expiring soon (uses configurable threshold from meta)
+  const isExpiringSoon = useCallback((expires: string | null) => {
     if (!expires) return false;
     const expiryDate = new Date(expires);
     const now = new Date();
     const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return daysUntilExpiry <= 30 && daysUntilExpiry > 0;
-  };
+    return daysUntilExpiry <= expiryWarningDays && daysUntilExpiry > 0;
+  }, [expiryWarningDays]);
 
   const isExpired = (expires: string | null) => {
     if (!expires) return false;

@@ -222,8 +222,8 @@ app.post('/gateway/restart', authenticate, async (req, res) => {
     const gatewayPort = config.gateway?.port || 3377;
     const gatewayUrl = `http://localhost:${gatewayPort}`;
     
-    // Call the gateway's restart endpoint
-    const response = await fetch(`${gatewayUrl}/api/gateway/restart`, {
+    // Call the gateway's restart endpoint (correct path is /api/restart)
+    const response = await fetch(`${gatewayUrl}/api/restart`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
-const FILE_SERVER_TOKEN = process.env.FILE_SERVER_TOKEN || "";
+const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 const SECRETS_PATH = "~/.openclaw/credentials/secrets.json";
 
 interface Credential {

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
+const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 
 export async function POST() {
   const log = new Logger({ source: "api/gateway/ping" });
@@ -27,6 +28,7 @@ export async function POST() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${FILE_SERVER_TOKEN}`,
       },
       body: JSON.stringify({
         text: "Check Ready queue for tasks",
