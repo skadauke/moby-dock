@@ -181,14 +181,7 @@ export async function POST(request: Request) {
       );
     }
     
-    // Log the generated config for troubleshooting (headers redacted)
-    const redactedHeaders = generatedConfig.headers
-      ? Object.keys(generatedConfig.headers).reduce((acc, key) => {
-          acc[key] = '[REDACTED]';
-          return acc;
-        }, {} as Record<string, string>)
-      : undefined;
-    
+    // Log the generated config for troubleshooting (header values redacted)
     log.info("Generated test config", { 
       id,
       service: credential.service,
