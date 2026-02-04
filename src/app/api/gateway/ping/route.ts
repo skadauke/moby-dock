@@ -41,21 +41,29 @@ export async function POST() {
     const duration = Date.now() - startTime;
 
     if (!res.ok) {
+      // Log error details server-side only (don't expose to client)
       const errorText = await res.text();
       log.error("[Gateway] ping failed", {
         status: res.status,
-        error: errorText,
+        // Don't log full error text - may contain sensitive info
+        errorLength: errorText.length,
         duration,
       });
       await log.flush();
+      // Return generic error to client
       return NextResponse.json(
-        { error: "Failed to ping gateway", details: errorText },
+        { error: "Failed to ping gateway" },
         { status: res.status }
       );
     }
 
     const data = await res.json();
-    log.info("[Gateway] ping succeeded", { duration, response: data });
+    // Only log metadata, not full response (may contain sensitive data)
+    log.info("[Gateway] ping succeeded", { 
+      duration, 
+      hasResponse: !!data,
+      responseKeys: data ? Object.keys(data) : []
+    });
     await log.flush();
 
     return NextResponse.json({ success: true, ...data });
