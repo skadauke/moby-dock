@@ -102,14 +102,21 @@ export async function POST(request: NextRequest) {
   }
 
   const { path, content } = body;
-  log.info('POST /api/files', { path, contentLength: content?.length });
 
   try {
-    if (!path || content === undefined) {
-      log.warn('Missing path or content');
+    if (!path || typeof path !== 'string') {
+      log.warn('Missing or invalid path');
       await log.flush();
-      return NextResponse.json({ error: 'Path and content are required' }, { status: 400 });
+      return NextResponse.json({ error: 'Path is required and must be a string' }, { status: 400 });
     }
+    
+    if (typeof content !== 'string') {
+      log.warn('Missing or invalid content type', { path, contentType: typeof content });
+      await log.flush();
+      return NextResponse.json({ error: 'Content is required and must be a string' }, { status: 400 });
+    }
+    
+    log.info('POST /api/files', { path, contentLength: content.length });
 
     const startTime = Date.now();
     const res = await fetch(`${FILE_SERVER_URL}/files`, {

@@ -134,16 +134,16 @@ export async function PATCH(
   const startTime = Date.now();
 
   try {
-    const updates = await request.json();
+    const body = await request.json();
     
     // Validate and sanitize updates - prevent overwriting protected fields
-    if (!updates || typeof updates !== "object") {
+    if (!body || typeof body !== "object") {
       await log.flush();
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     
-    // Remove protected fields that shouldn't be modified
-    const { created, ...allowedUpdates } = updates;
+    // Extract expectedVersion for optimistic locking
+    const { expectedVersion, created, ...allowedUpdates } = body;
     if (created) {
       log.warn("Attempted to modify protected field 'created'", { id, userId: session.user.id });
     }
@@ -181,6 +181,24 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Credential not found" },
         { status: 404 }
+      );
+    }
+    
+    // Optimistic locking: reject if file changed since client's version
+    if (expectedVersion && secrets._meta.updated !== expectedVersion) {
+      log.warn("Concurrent modification detected", {
+        id,
+        expectedVersion,
+        actualVersion: secrets._meta.updated,
+        userId: session.user.id,
+      });
+      await log.flush();
+      return NextResponse.json(
+        { 
+          error: "Conflict: secrets file was modified by another request",
+          currentVersion: secrets._meta.updated,
+        },
+        { status: 409 }
       );
     }
 
@@ -251,7 +269,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   
-  log.info("DELETE /api/vault/secrets/[id]", { id, userId: session.user.id });
+  // Get expectedVersion from query params for optimistic locking
+  const expectedVersion = request.nextUrl.searchParams.get("expectedVersion");
+  
+  log.info("DELETE /api/vault/secrets/[id]", { id, userId: session.user.id, expectedVersion });
 
   const startTime = Date.now();
 
@@ -283,6 +304,24 @@ export async function DELETE(
       return NextResponse.json(
         { error: "Credential not found" },
         { status: 404 }
+      );
+    }
+    
+    // Optimistic locking: reject if file changed since client's version
+    if (expectedVersion && secrets._meta.updated !== expectedVersion) {
+      log.warn("Concurrent modification detected on delete", {
+        id,
+        expectedVersion,
+        actualVersion: secrets._meta.updated,
+        userId: session.user.id,
+      });
+      await log.flush();
+      return NextResponse.json(
+        { 
+          error: "Conflict: secrets file was modified by another request",
+          currentVersion: secrets._meta.updated,
+        },
+        { status: 409 }
       );
     }
 

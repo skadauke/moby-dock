@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { getAllProjects, createProject } from "@/lib/projects-store";
 
 /**
@@ -16,7 +18,16 @@ import { getAllProjects, createProject } from "@/lib/projects-store";
  */
 export async function GET() {
   const log = new Logger({ source: "api/projects" });
-  log.info("GET /api/projects");
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized projects list attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("GET /api/projects", { userId: session.user.id });
 
   const startTime = Date.now();
   const result = await getAllProjects();
@@ -49,6 +60,14 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/projects" });
+
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized project create attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body;
   try {

@@ -12,8 +12,10 @@ permissions:
 
 jobs:
   review:
-    # Only run when 'deep-review' label is present
-    if: contains(github.event.pull_request.labels.*.name, 'deep-review')
+    # Only run when 'deep-review' label is present AND 'skip-review' is NOT present
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'deep-review') &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-review')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

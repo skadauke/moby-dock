@@ -9,6 +9,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { getAllTasks, createTask } from "@/lib/api-store";
 
 /**
@@ -17,7 +19,16 @@ import { getAllTasks, createTask } from "@/lib/api-store";
  */
 export async function GET() {
   const log = new Logger({ source: "api/tasks" });
-  log.info("GET /api/tasks");
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized tasks list attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("GET /api/tasks", { userId: session.user.id });
 
   const startTime = Date.now();
   const result = await getAllTasks();
@@ -50,6 +61,14 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/tasks" });
+
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized task create attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body;
   try {

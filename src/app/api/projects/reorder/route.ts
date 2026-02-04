@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { reorderProjects } from "@/lib/projects-store";
 
 /**
@@ -16,6 +18,14 @@ import { reorderProjects } from "@/lib/projects-store";
  */
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/projects/reorder" });
+
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized project reorder attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body;
   try {

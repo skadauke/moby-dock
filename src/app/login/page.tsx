@@ -15,6 +15,27 @@ import {
 // Production URL for OAuth
 const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "https://moby-dock.vercel.app";
 
+// Allowed redirect origins (to prevent open redirect attacks)
+const ALLOWED_REDIRECT_PATTERNS = [
+  /^https:\/\/moby-dock(-[a-z0-9-]+)?\.vercel\.app$/, // Vercel preview deployments
+  /^https:\/\/moby-dock\.vercel\.app$/, // Production
+  /^http:\/\/localhost:\d+$/, // Local development
+  /^http:\/\/127\.0\.0\.1:\d+$/, // Local development
+];
+
+/**
+ * Validate that a return URL is safe (same-origin or known preview domains)
+ */
+function isValidReturnUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_REDIRECT_PATTERNS.some(pattern => pattern.test(parsed.origin));
+  } catch {
+    // Relative URLs are always safe (same-origin)
+    return url.startsWith('/');
+  }
+}
+
 // Check if we're on the production/auth host (including localhost for dev)
 function checkIsProduction(): boolean {
   if (typeof window === "undefined") return false;
@@ -39,8 +60,13 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   
   // Derive returnUrl from searchParams (for preview deployment redirects)
+  // Validate against allowlist to prevent open redirect attacks
   const returnUrl = useMemo(() => {
-    return searchParams.get("returnTo");
+    const url = searchParams.get("returnTo");
+    if (url && isValidReturnUrl(url)) {
+      return url;
+    }
+    return null; // Invalid or missing URL - will fall back to /command
   }, [searchParams]);
 
   // Check for error in URL (from OAuth callback failures)
