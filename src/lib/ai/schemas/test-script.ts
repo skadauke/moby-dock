@@ -13,13 +13,27 @@ export const TestScriptSchema = z.object({
   /** Shell command to test the credential. Use $VALUE as placeholder for the secret. */
   testCommand: z
     .string()
+    .min(1, { message: "Command cannot be empty" })
     .refine(
       (cmd) => cmd.includes("$VALUE"),
       { message: "Command must include $VALUE placeholder for the secret" }
     )
     .refine(
-      (cmd) => !cmd.includes("\n") && !cmd.includes(";") && !cmd.includes("&&"),
-      { message: "Command must be a single, safe shell command (no newlines, semicolons, or &&)" }
+      (cmd) => {
+        // Block dangerous shell operators that could chain commands
+        const dangerousPatterns = [
+          "\n",     // newlines
+          ";",      // command separator
+          "&&",     // AND chain
+          "||",     // OR chain
+          "|",      // pipe (could redirect to malicious command)
+          "`",      // backtick command substitution
+          "$(",     // command substitution
+          "&",      // background execution
+        ];
+        return !dangerousPatterns.some(pattern => cmd.includes(pattern));
+      },
+      { message: "Command must be a single, safe shell command (no pipes, chains, or command substitution)" }
     )
     .describe("Shell command to test the credential. Use $VALUE as placeholder for the secret value."),
   

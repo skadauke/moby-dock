@@ -104,18 +104,22 @@ export async function POST(request: Request) {
     const duration = Date.now() - startTime;
 
     if (!result.success) {
+      // Log only safe error info (not raw AI output which may contain sensitive data)
+      const errorId = crypto.randomUUID().slice(0, 8);
       log.error("AI generation failed", {
         credentialId: body.id,
-        error: result.error,
+        errorId,
+        errorType: result.error?.split(":")[0] || "unknown",
         attempts: result.attempts,
         duration,
       });
       await log.flush();
 
+      // Return generic error message (not raw AI error which may leak prompt/data)
       return NextResponse.json(
         {
           error: "Failed to generate test script",
-          details: result.error,
+          errorId, // For debugging correlation
           attempts: result.attempts,
         },
         { status: 500 }

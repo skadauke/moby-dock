@@ -68,6 +68,54 @@ describe("TestScriptSchema", () => {
     const result = TestScriptSchema.safeParse(invalidScript);
     expect(result.success).toBe(false);
   });
+
+  it("rejects command with pipe", () => {
+    const invalidScript = {
+      testCommand: 'curl $VALUE | sh',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Pipe to shell",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects command with backticks", () => {
+    const invalidScript = {
+      testCommand: 'curl `echo $VALUE`',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Backtick substitution",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects command with $() substitution", () => {
+    const invalidScript = {
+      testCommand: 'curl $(cat /etc/passwd) $VALUE',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Command substitution",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty command", () => {
+    const invalidScript = {
+      testCommand: '',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Empty",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("RotationInfoSchema", () => {
@@ -120,5 +168,41 @@ describe("RotationInfoSchema", () => {
 
     const result = RotationInfoSchema.safeParse(invalidInfo);
     expect(result.success).toBe(false);
+  });
+
+  it("rejects javascript: URLs (XSS prevention)", () => {
+    const invalidInfo = {
+      rotationUrl: "javascript:alert('xss')",
+      pageName: "Settings",
+      instructions: ["Step 1"],
+      immediateInvalidation: true,
+    };
+
+    const result = RotationInfoSchema.safeParse(invalidInfo);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects data: URLs", () => {
+    const invalidInfo = {
+      rotationUrl: "data:text/html,<script>alert('xss')</script>",
+      pageName: "Settings",
+      instructions: ["Step 1"],
+      immediateInvalidation: true,
+    };
+
+    const result = RotationInfoSchema.safeParse(invalidInfo);
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts http URLs", () => {
+    const validInfo = {
+      rotationUrl: "http://internal.example.com/settings",
+      pageName: "Settings",
+      instructions: ["Step 1"],
+      immediateInvalidation: true,
+    };
+
+    const result = RotationInfoSchema.safeParse(validInfo);
+    expect(result.success).toBe(true);
   });
 });

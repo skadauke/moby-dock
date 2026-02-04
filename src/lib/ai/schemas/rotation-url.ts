@@ -14,6 +14,17 @@ export const RotationInfoSchema = z.object({
   rotationUrl: z
     .string()
     .url()
+    .refine(
+      (url) => {
+        try {
+          const parsed = new URL(url);
+          return ["http:", "https:"].includes(parsed.protocol);
+        } catch {
+          return false;
+        }
+      },
+      { message: "URL must use http or https protocol (no javascript:, data:, etc.)" }
+    )
     .describe("Direct URL to the page where the credential can be rotated/regenerated"),
   
   /** Name of the page/section where the credential is managed */
