@@ -53,6 +53,8 @@ export async function POST(request: Request) {
 
     // Validate required fields
     if (!body.id || !body.type || !body.service) {
+      log.warn("Missing required fields", { body });
+      await log.flush();
       return NextResponse.json(
         { error: "Missing required fields: id, type, service" },
         { status: 400 }
