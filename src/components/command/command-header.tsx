@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TaskModal } from "./task-modal";
 import { Task, Creator } from "@/types/kanban";
-import { Plus, Flag, X, RefreshCw } from "lucide-react";
+import { Plus, Flag, X, RefreshCw, Zap } from "lucide-react";
+import { useLogger } from "next-axiom";
 
 export type FilterType = "all" | "flagged" | "moby" | "stephan";
 
@@ -29,9 +30,35 @@ export function CommandHeader({
   selectedProjectId,
 }: CommandHeaderProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPinging, setIsPinging] = useState(false);
+  const [pingSuccess, setPingSuccess] = useState(false);
+  const log = useLogger();
   
   // Default creator for new tasks (could be enhanced with session info later)
   const defaultCreator: Creator = "STEPHAN";
+
+  // Ping Moby - send wake event to check Ready queue
+  const pingMoby = useCallback(async () => {
+    setIsPinging(true);
+    setPingSuccess(false);
+    log.info("Ping Moby initiated");
+    
+    try {
+      const res = await fetch("/api/gateway/ping", { method: "POST" });
+      if (!res.ok) {
+        throw new Error("Failed to ping Moby");
+      }
+      setPingSuccess(true);
+      log.info("Ping Moby succeeded");
+      // Reset success indicator after 2 seconds
+      setTimeout(() => setPingSuccess(false), 2000);
+    } catch (err) {
+      log.error("Ping Moby failed", { error: err instanceof Error ? err.message : "Unknown error" });
+      // Could show error toast here
+    } finally {
+      setIsPinging(false);
+    }
+  }, [log]);
 
   // Open modal handler (also used by keyboard shortcut)
   const openNewTaskModal = useCallback(() => {
@@ -126,6 +153,21 @@ export function CommandHeader({
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={pingMoby}
+                disabled={isPinging}
+                className={`h-8 px-3 ${
+                  pingSuccess 
+                    ? "text-green-400 bg-green-500/10" 
+                    : "text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10"
+                }`}
+                title="Ping Moby to check Ready queue"
+              >
+                <Zap className={`h-4 w-4 mr-1.5 ${isPinging ? "animate-pulse" : ""}`} />
+                {pingSuccess ? "Pinged!" : "Ping Moby"}
+              </Button>
               {onRefresh && (
                 <Button
                   variant="ghost"

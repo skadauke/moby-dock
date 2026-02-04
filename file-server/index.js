@@ -165,6 +165,92 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', allowedPaths: ALLOWED_PATHS });
 });
 
+// POST /gateway/ping - Send wake event to OpenClaw gateway
+app.post('/gateway/ping', authenticate, async (req, res) => {
+  const { text = "Check Ready queue for tasks", mode = "now" } = req.body;
+  
+  // Read gateway config to get the gateway URL
+  const configPath = `${HOME}/.openclaw/openclaw.json`;
+  
+  try {
+    const configContent = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    
+    // Get gateway URL from config (default to localhost:3377)
+    const gatewayPort = config.gateway?.port || 3377;
+    const gatewayUrl = `http://localhost:${gatewayPort}`;
+    
+    // Call the gateway's wake endpoint
+    const response = await fetch(`${gatewayUrl}/api/cron/wake`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text, mode }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gateway ping failed:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: 'Gateway ping failed', 
+        details: errorText 
+      });
+    }
+    
+    const data = await response.json();
+    console.log('Gateway ping succeeded:', data);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('Gateway ping error:', err);
+    res.status(500).json({ 
+      error: 'Failed to ping gateway', 
+      details: err.message 
+    });
+  }
+});
+
+// POST /gateway/restart - Restart the OpenClaw gateway
+app.post('/gateway/restart', authenticate, async (req, res) => {
+  // Read gateway config to get the gateway URL
+  const configPath = `${HOME}/.openclaw/openclaw.json`;
+  
+  try {
+    const configContent = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    
+    const gatewayPort = config.gateway?.port || 3377;
+    const gatewayUrl = `http://localhost:${gatewayPort}`;
+    
+    // Call the gateway's restart endpoint
+    const response = await fetch(`${gatewayUrl}/api/gateway/restart`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gateway restart failed:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: 'Gateway restart failed', 
+        details: errorText 
+      });
+    }
+    
+    const data = await response.json();
+    console.log('Gateway restart succeeded:', data);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('Gateway restart error:', err);
+    res.status(500).json({ 
+      error: 'Failed to restart gateway', 
+      details: err.message 
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`File server running on port ${PORT}`);
   console.log('Allowed paths:', ALLOWED_PATHS);
