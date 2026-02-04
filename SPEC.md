@@ -130,7 +130,7 @@ View and control the OpenClaw host screen.
 
 | Component | Technology |
 |-----------|------------|
-| **Framework** | Next.js 15 (App Router) |
+| **Framework** | Next.js 16 (App Router) |
 | **Styling** | Tailwind CSS + shadcn/ui |
 | **Editor** | Monaco Editor |
 | **Database** | Supabase |
