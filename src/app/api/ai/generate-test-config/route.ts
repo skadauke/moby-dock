@@ -169,7 +169,8 @@ export async function POST(request: Request) {
     if (!validateTestConfigPlaceholder(generatedConfig)) {
       log.warn("Generated config missing $VALUE placeholder", { 
         id,
-        config: generatedConfig 
+        method: generatedConfig.method,
+        // Don't log full config - may contain sensitive patterns
       });
       await log.flush();
       return NextResponse.json(
@@ -181,19 +182,15 @@ export async function POST(request: Request) {
       );
     }
     
-    // Log the generated config for troubleshooting (header values redacted)
+    // Log minimal config info for troubleshooting (no URLs/headers - may contain sensitive patterns)
     log.info("Generated test config", { 
       id,
       service: credential.service,
       type: credential.type,
-      generatedConfig: {
-        method: generatedConfig.method,
-        url: generatedConfig.url,
-        expectStatus: generatedConfig.expectStatus,
-        description: generatedConfig.description,
-        // Only log header keys, not values (security)
-        headerKeys: generatedConfig.headers ? Object.keys(generatedConfig.headers) : [],
-      },
+      method: generatedConfig.method,
+      expectStatus: generatedConfig.expectStatus,
+      hasHeaders: !!generatedConfig.headers,
+      hasBody: !!generatedConfig.body,
       attempts: result.attempts
     });
     
