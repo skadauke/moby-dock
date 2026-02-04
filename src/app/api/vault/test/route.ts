@@ -186,7 +186,8 @@ export async function POST(request: Request) {
     // Validate test config URL
     const urlValidation = validateTestUrl(testConfig.url);
     if (!urlValidation.valid) {
-      log.warn("Invalid test URL", { id, url: testConfig.url, error: urlValidation.error });
+      // Don't log URL - may contain sensitive patterns
+      log.warn("Invalid test URL", { id, error: urlValidation.error });
       await log.flush();
       return NextResponse.json({ 
         error: "Invalid test configuration",
@@ -204,17 +205,15 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    // Log the test config (for troubleshooting, as requested)
+    // Log minimal test info (no URLs/headers - may contain sensitive patterns)
     log.info("Executing test", { 
       id, 
       service: credential.service,
       type: credential.type,
-      testConfig: {
-        method: testConfig.method,
-        url: testConfig.url,
-        expectStatus: testConfig.expectStatus,
-        // Don't log headers as they may contain sensitive patterns
-      }
+      method: testConfig.method,
+      expectStatus: testConfig.expectStatus,
+      hasHeaders: !!testConfig.headers,
+      hasBody: !!testConfig.body,
     });
     
     // Execute test
