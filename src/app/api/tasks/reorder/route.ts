@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { checkApiAuth } from "@/lib/api-auth";
 import { reorderTasks } from "@/lib/api-store";
 import { Status } from "@/types/kanban";
 
@@ -18,11 +19,25 @@ import { Status } from "@/types/kanban";
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/tasks/reorder" });
 
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized task reorder attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body;
   try {
     body = await request.json();
   } catch {
     log.warn("POST /api/tasks/reorder - invalid JSON");
+    await log.flush();
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    log.warn("POST /api/tasks/reorder - invalid body type");
     await log.flush();
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -38,6 +53,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Validate taskIds are unique non-empty strings
+  const seen = new Set<string>();
+  for (const id of taskIds) {
+    if (typeof id !== "string" || id.trim() === "") {
+      log.warn("POST /api/tasks/reorder - invalid taskId", { id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "taskIds must be non-empty strings" },
+        { status: 400 }
+      );
+    }
+    if (seen.has(id)) {
+      log.warn("POST /api/tasks/reorder - duplicate taskId", { id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "taskIds must be unique" },
+        { status: 400 }
+      );
+    }
+    seen.add(id);
+  }
+
   // Accept both READY and IN_PROGRESS (legacy DB value)
   const validStatuses = ["BACKLOG", "READY", "IN_PROGRESS", "DONE"];
   if (!validStatuses.includes(status)) {
@@ -49,6 +86,7 @@ export async function POST(request: NextRequest) {
   log.info("POST /api/tasks/reorder", {
     status,
     taskCount: taskIds.length,
+    userId: authResult.userId,
   });
 
   // Map IN_PROGRESS to READY (DB compatibility)
@@ -64,6 +102,7 @@ export async function POST(request: NextRequest) {
       taskCount: taskIds.length,
       error: result.error.message,
       duration,
+      userId: authResult.userId,
     });
     await log.flush();
     return NextResponse.json(
@@ -76,6 +115,7 @@ export async function POST(request: NextRequest) {
     status,
     taskCount: taskIds.length,
     duration,
+    userId: authResult.userId,
   });
   await log.flush();
 

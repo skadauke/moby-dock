@@ -116,17 +116,9 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   };
 
   /**
-   * Persist task order to the server.
-   * Computes the current order from tasksRef and sends to API.
+   * Persist task order to the server using the provided task IDs.
    */
-  const persistTaskOrder = useCallback(async (status: Status) => {
-    const currentTasks = tasksRef.current;
-    const columnTasks = currentTasks
-      .filter(t => t.status === status)
-      .sort((a, b) => a.position - b.position);
-    
-    const taskIds = columnTasks.map(t => t.id);
-    
+  const persistTaskOrder = useCallback(async (taskIds: string[], status: Status) => {
     try {
       const res = await fetch('/api/tasks/reorder', {
         method: 'POST',
@@ -142,9 +134,39 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   }, []);
 
   // Handle task status change (drag between columns)
-  const handleTaskStatusChange = useCallback(async (taskId: string, newStatus: Status, _newPosition: number) => {
-    // The Board already updated local state optimistically
-    // We need to persist: 1) the task's new status, 2) the new column order
+  // Board passes both target and source column IDs to avoid stale state issues
+  const handleTaskStatusChange = useCallback(async (
+    taskId: string, 
+    newStatus: Status, 
+    newPosition: number,
+    reorderedTaskIds: string[],
+    sourceStatus: Status | null,
+    sourceColumnIds: string[]
+  ) => {
+    // Update parent state to stay in sync with Board's optimistic update
+    setTasks((prev) => {
+      return prev.map(t => {
+        if (t.id === taskId) {
+          return { ...t, status: newStatus, position: newPosition };
+        }
+        // Reindex target column tasks based on reorderedTaskIds
+        if (t.status === newStatus) {
+          const newPos = reorderedTaskIds.indexOf(t.id);
+          if (newPos !== -1) {
+            return { ...t, position: newPos };
+          }
+        }
+        // Reindex source column tasks based on sourceColumnIds
+        if (sourceStatus && t.status === sourceStatus) {
+          const newPos = sourceColumnIds.indexOf(t.id);
+          if (newPos !== -1) {
+            return { ...t, position: newPos };
+          }
+        }
+        return t;
+      });
+    });
+    
     try {
       // Update the task's status
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -154,8 +176,13 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
       });
       if (!res.ok) throw new Error('Failed to update task status');
       
-      // Persist the new order for the target column
-      await persistTaskOrder(newStatus);
+      // Persist the target column order
+      await persistTaskOrder(reorderedTaskIds, newStatus);
+      
+      // Also persist source column order (from Board, not stale state)
+      if (sourceStatus && sourceStatus !== newStatus && sourceColumnIds.length > 0) {
+        await persistTaskOrder(sourceColumnIds, sourceStatus);
+      }
     } catch (error) {
       console.error('Failed to update task status:', error);
       // TODO: Could revert optimistic update here
@@ -163,14 +190,29 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   }, [persistTaskOrder]);
 
   // Handle task reorder within same column
-  const handleTaskReorder = useCallback(async (taskId: string, _newPosition: number) => {
-    // The Board already updated local state optimistically
-    // Find the task's status and persist the new order
-    const task = tasksRef.current.find(t => t.id === taskId);
-    if (!task) return;
-
+  // Board passes the status and reordered task IDs directly to avoid stale state issues
+  const handleTaskReorder = useCallback(async (
+    _taskId: string, 
+    status: Status,
+    _newPosition: number,
+    reorderedTaskIds: string[]
+  ) => {
+    // Update parent state to stay in sync with Board's optimistic update
+    setTasks((prev) => {
+      return prev.map(t => {
+        if (t.status === status) {
+          const newPos = reorderedTaskIds.indexOf(t.id);
+          if (newPos !== -1) {
+            return { ...t, position: newPos };
+          }
+        }
+        return t;
+      });
+    });
+    
     try {
-      await persistTaskOrder(task.status);
+      // Persist using IDs and status from Board
+      await persistTaskOrder(reorderedTaskIds, status);
     } catch (error) {
       console.error('Failed to reorder task:', error);
     }
@@ -203,6 +245,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
             onAddTask={handleAddTask}
             onTaskStatusChange={handleTaskStatusChange}
             onTaskReorder={handleTaskReorder}
+            disableDragDrop={filter !== "all" || selectedProjectId !== null}
           />
         </div>
       </div>

@@ -102,14 +102,21 @@ export async function POST(request: NextRequest) {
   }
 
   const { path, content } = body;
-  log.info('POST /api/files', { path, contentLength: content?.length });
 
   try {
-    if (!path || content === undefined) {
-      log.warn('Missing path or content');
+    if (!path || typeof path !== 'string') {
+      log.warn('Missing or invalid path');
       await log.flush();
-      return NextResponse.json({ error: 'Path and content are required' }, { status: 400 });
+      return NextResponse.json({ error: 'Path is required and must be a string' }, { status: 400 });
     }
+    
+    if (typeof content !== 'string') {
+      log.warn('Missing or invalid content type', { path, contentType: typeof content });
+      await log.flush();
+      return NextResponse.json({ error: 'Content is required and must be a string' }, { status: 400 });
+    }
+    
+    log.info('POST /api/files', { path, contentLength: content.length });
 
     const startTime = Date.now();
     const res = await fetch(`${FILE_SERVER_URL}/files`, {
@@ -148,18 +155,28 @@ export async function POST(request: NextRequest) {
  * @returns JSON with success status or error
  */
 export async function DELETE(request: NextRequest) {
+  const log = new Logger({ source: 'api/files' });
+  
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
+    log.warn('Unauthorized file delete attempt');
+    await log.flush();
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const path = request.nextUrl.searchParams.get('path');
+  
+  log.info('DELETE /api/files', { path, userId: session.user.id });
+
   if (!path) {
+    log.warn('Missing path parameter');
+    await log.flush();
     return NextResponse.json({ error: 'Path is required' }, { status: 400 });
   }
 
   try {
+    const startTime = Date.now();
     const res = await fetch(`${FILE_SERVER_URL}/files?path=${encodeURIComponent(path)}`, {
       method: 'DELETE',
       headers: {
@@ -167,15 +184,21 @@ export async function DELETE(request: NextRequest) {
         'Content-Type': 'application/json',
       },
     });
+    const duration = Date.now() - startTime;
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: res.statusText }));
+      log.error('File server delete error', { path, status: res.status, error: error.error, duration, userId: session.user.id });
+      await log.flush();
       return NextResponse.json({ error: error.error || 'Failed to delete file' }, { status: res.status });
     }
 
+    log.info('File delete success', { path, duration, userId: session.user.id });
+    await log.flush();
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('File delete error:', error);
+    log.error('File server connection failed on delete', { path, error: String(error), userId: session.user.id });
+    await log.flush();
     return NextResponse.json({ error: 'Failed to connect to file server' }, { status: 500 });
   }
 }

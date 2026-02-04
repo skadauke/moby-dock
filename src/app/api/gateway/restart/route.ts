@@ -23,15 +23,16 @@ const GATEWAY_TIMEOUT_MS = 10000;
 export async function POST() {
   const log = new Logger({ source: "api/gateway/restart" });
 
-  // Get user context for audit trail
+  // Auth check - gateway restart is a critical operation
   const session = await auth.api.getSession({ headers: await headers() });
-  const userId = session?.user?.id || "anonymous";
-
+  if (!session?.user) {
+    log.warn("Unauthorized gateway restart attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  const userId = session.user.id;
   log.info("POST /api/gateway/restart", { userId });
-
-  // Note: We allow unauthenticated restarts for now since this is
-  // typically called from the config editor after saving openclaw.json
-  // TODO: Consider requiring auth for this endpoint
 
   try {
     const startTime = Date.now();

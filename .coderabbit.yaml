@@ -2,6 +2,9 @@
 # https://docs.coderabbit.ai/reference/configuration
 
 reviews:
+  # Request changes (blocking) instead of just commenting when issues found
+  request_changes_workflow: true
+  high_level_summary: true
   auto_review:
     enabled: true
     drafts: false

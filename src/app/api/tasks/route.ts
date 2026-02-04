@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { checkApiAuth } from "@/lib/api-auth";
 import { getAllTasks, createTask } from "@/lib/api-store";
 
 /**
@@ -17,7 +18,16 @@ import { getAllTasks, createTask } from "@/lib/api-store";
  */
 export async function GET() {
   const log = new Logger({ source: "api/tasks" });
-  log.info("GET /api/tasks");
+  
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized tasks list attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("GET /api/tasks", { userId: authResult.userId, authMethod: authResult.method });
 
   const startTime = Date.now();
   const result = await getAllTasks();
@@ -51,6 +61,14 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/tasks" });
 
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized task create attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body;
   try {
     body = await request.json();
@@ -60,13 +78,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    log.warn("POST /api/tasks - invalid body type");
+    await log.flush();
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const { title, description, priority, creator, projectId } = body;
 
   log.info("POST /api/tasks", {
-    title,
     priority,
     creator,
     projectId,
+    titleLength: title?.length,
   });
 
   if (!title || typeof title !== "string") {
@@ -88,7 +112,6 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     log.error("[Supabase] createTask failed", {
       error: result.error.message,
-      title,
       duration,
     });
     await log.flush();
@@ -100,7 +123,6 @@ export async function POST(request: NextRequest) {
 
   log.info("[Supabase] createTask success", {
     taskId: result.data.id,
-    title,
     duration,
   });
   await log.flush();

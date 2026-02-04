@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { checkApiAuth } from "@/lib/api-auth";
 import { getAllProjects, createProject } from "@/lib/projects-store";
 
 /**
@@ -16,7 +17,16 @@ import { getAllProjects, createProject } from "@/lib/projects-store";
  */
 export async function GET() {
   const log = new Logger({ source: "api/projects" });
-  log.info("GET /api/projects");
+  
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized projects list attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("GET /api/projects", { userId: authResult.userId });
 
   const startTime = Date.now();
   const result = await getAllProjects();
@@ -50,6 +60,14 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/projects" });
 
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized project create attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body;
   try {
     body = await request.json();
@@ -73,7 +91,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  log.info("POST /api/projects", { name, color });
+  log.info("POST /api/projects", { color, nameLength: name?.length });
 
   const startTime = Date.now();
   const result = await createProject({ name, description, color });
@@ -81,7 +99,6 @@ export async function POST(request: NextRequest) {
 
   if (!result.ok) {
     log.error("[Supabase] createProject failed", {
-      name,
       error: result.error.message,
       duration,
     });
@@ -94,7 +111,6 @@ export async function POST(request: NextRequest) {
 
   log.info("[Supabase] createProject success", {
     projectId: result.data.id,
-    name,
     duration,
   });
   await log.flush();

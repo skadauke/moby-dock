@@ -144,13 +144,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // Input validation
-    if (!body || typeof body !== "object") {
+    // Input validation - reject arrays and non-objects
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
       await log.flush();
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     
-    const { id, type, service, value, used_by, ...rest } = body;
+    const { id, type, service, value, used_by, expectedVersion, ...rest } = body;
 
     if (!id || typeof id !== "string") {
       await log.flush();
@@ -203,6 +203,24 @@ export async function POST(request: Request) {
 
     const { content } = await res.json();
     const secrets: SecretsFile = JSON.parse(content);
+    
+    // Optimistic locking: reject if file changed since client's version
+    if (expectedVersion && secrets._meta.updated !== expectedVersion) {
+      log.warn("Concurrent modification detected on create", {
+        id,
+        expectedVersion,
+        actualVersion: secrets._meta.updated,
+        userId: session.user.id,
+      });
+      await log.flush();
+      return NextResponse.json(
+        { 
+          error: "Conflict: secrets file was modified by another request",
+          currentVersion: secrets._meta.updated,
+        },
+        { status: 409 }
+      );
+    }
 
     // Check if ID already exists
     if (secrets.credentials[id]) {
@@ -218,7 +236,8 @@ export async function POST(request: Request) {
       ...credential,
       created: credential.created || new Date().toISOString().split("T")[0],
     };
-    secrets._meta.updated = new Date().toISOString().split("T")[0];
+    // Use full ISO timestamp for optimistic locking (not just date)
+    secrets._meta.updated = new Date().toISOString();
 
     // Write back
     const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {

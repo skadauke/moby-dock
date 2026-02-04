@@ -96,6 +96,8 @@ export async function GET(
     return NextResponse.json({
       id,
       ...credential,
+      // Include version for optimistic locking on subsequent writes
+      currentVersion: secrets._meta.updated,
     });
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -134,16 +136,25 @@ export async function PATCH(
   const startTime = Date.now();
 
   try {
-    const updates = await request.json();
+    const body = await request.json();
     
-    // Validate and sanitize updates - prevent overwriting protected fields
-    if (!updates || typeof updates !== "object") {
+    // Validate and sanitize updates - reject arrays and non-objects
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
       await log.flush();
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     
-    // Remove protected fields that shouldn't be modified
-    const { created, ...allowedUpdates } = updates;
+    // Extract expectedVersion for optimistic locking (required)
+    const { expectedVersion, created, ...allowedUpdates } = body;
+    
+    if (!expectedVersion || typeof expectedVersion !== "string") {
+      log.warn("PATCH missing expectedVersion", { id, userId: session.user.id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "expectedVersion is required for updates" },
+        { status: 400 }
+      );
+    }
     if (created) {
       log.warn("Attempted to modify protected field 'created'", { id, userId: session.user.id });
     }
@@ -183,13 +194,32 @@ export async function PATCH(
         { status: 404 }
       );
     }
+    
+    // Optimistic locking: reject if file changed since client's version
+    if (secrets._meta.updated !== expectedVersion) {
+      log.warn("Concurrent modification detected", {
+        id,
+        expectedVersion,
+        actualVersion: secrets._meta.updated,
+        userId: session.user.id,
+      });
+      await log.flush();
+      return NextResponse.json(
+        { 
+          error: "Conflict: secrets file was modified by another request",
+          currentVersion: secrets._meta.updated,
+        },
+        { status: 409 }
+      );
+    }
 
     // Update credential with sanitized fields
     secrets.credentials[id] = {
       ...secrets.credentials[id],
       ...allowedUpdates,
     };
-    secrets._meta.updated = new Date().toISOString().split("T")[0];
+    // Use full ISO timestamp for optimistic locking (not just date)
+    secrets._meta.updated = new Date().toISOString();
 
     // Write back
     const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {
@@ -251,7 +281,19 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   
-  log.info("DELETE /api/vault/secrets/[id]", { id, userId: session.user.id });
+  // Get expectedVersion from query params for optimistic locking (required)
+  const expectedVersion = request.nextUrl.searchParams.get("expectedVersion");
+  
+  if (!expectedVersion) {
+    log.warn("DELETE missing expectedVersion", { id, userId: session.user.id });
+    await log.flush();
+    return NextResponse.json(
+      { error: "expectedVersion query param is required for deletes" },
+      { status: 400 }
+    );
+  }
+  
+  log.info("DELETE /api/vault/secrets/[id]", { id, userId: session.user.id, expectedVersion });
 
   const startTime = Date.now();
 
@@ -285,10 +327,29 @@ export async function DELETE(
         { status: 404 }
       );
     }
+    
+    // Optimistic locking: reject if file changed since client's version
+    if (secrets._meta.updated !== expectedVersion) {
+      log.warn("Concurrent modification detected on delete", {
+        id,
+        expectedVersion,
+        actualVersion: secrets._meta.updated,
+        userId: session.user.id,
+      });
+      await log.flush();
+      return NextResponse.json(
+        { 
+          error: "Conflict: secrets file was modified by another request",
+          currentVersion: secrets._meta.updated,
+        },
+        { status: 409 }
+      );
+    }
 
     // Delete credential
     delete secrets.credentials[id];
-    secrets._meta.updated = new Date().toISOString().split("T")[0];
+    // Use full ISO timestamp for optimistic locking (not just date)
+    secrets._meta.updated = new Date().toISOString();
 
     // Write back
     const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {

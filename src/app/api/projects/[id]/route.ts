@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { checkApiAuth } from "@/lib/api-auth";
 import { getProjectById, updateProject, deleteProject } from "@/lib/projects-store";
 
 interface Params {
@@ -20,9 +21,18 @@ interface Params {
  */
 export async function GET(_request: NextRequest, { params }: Params) {
   const log = new Logger({ source: "api/projects/[id]" });
+  
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized project read attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
   const { id } = await params;
 
-  log.info("GET /api/projects/[id]", { projectId: id });
+  log.info("GET /api/projects/[id]", { projectId: id, userId: authResult.userId });
 
   const startTime = Date.now();
   const result = await getProjectById(id);
@@ -53,6 +63,15 @@ export async function GET(_request: NextRequest, { params }: Params) {
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   const log = new Logger({ source: "api/projects/[id]" });
+  
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized project update attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
   const { id } = await params;
 
   let body;
@@ -107,9 +126,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
  */
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const log = new Logger({ source: "api/projects/[id]" });
+  
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
+    log.warn("Unauthorized project delete attempt");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
   const { id } = await params;
 
-  log.info("DELETE /api/projects/[id]", { projectId: id });
+  log.info("DELETE /api/projects/[id]", { projectId: id, userId: authResult.userId });
 
   const startTime = Date.now();
   const result = await deleteProject(id);
