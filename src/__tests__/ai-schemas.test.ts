@@ -116,6 +116,54 @@ describe("TestScriptSchema", () => {
     const result = TestScriptSchema.safeParse(invalidScript);
     expect(result.success).toBe(false);
   });
+
+  it("rejects command with || OR chain", () => {
+    const invalidScript = {
+      testCommand: 'curl $VALUE || echo "failed"',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "OR chain",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects command with output redirection", () => {
+    const invalidScript = {
+      testCommand: 'curl $VALUE > /tmp/output',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Output redirect",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects command with input redirection", () => {
+    const invalidScript = {
+      testCommand: 'curl $VALUE < /etc/passwd',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Input redirect",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects command with Windows line breaks", () => {
+    const invalidScript = {
+      testCommand: 'curl $VALUE\r\nrm -rf /',
+      successIndicator: "HTTP 200",
+      authFailureIndicator: "HTTP 401",
+      explanation: "Windows CRLF",
+    };
+
+    const result = TestScriptSchema.safeParse(invalidScript);
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("RotationInfoSchema", () => {

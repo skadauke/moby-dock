@@ -125,9 +125,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Log only safe data - don't log full URL as it's untrusted AI output
+    let urlOrigin = "unknown";
+    try {
+      urlOrigin = new URL(result.data.rotationUrl).origin;
+    } catch {
+      // URL parsing failed - already validated by schema but defensive
+    }
     log.info("Rotation URL generated successfully", {
       credentialId: body.id,
-      rotationUrl: result.data.rotationUrl,
+      urlOrigin, // Log only origin, not full path
       attempts: result.attempts,
       duration,
     });

@@ -20,20 +20,24 @@ export const TestScriptSchema = z.object({
     )
     .refine(
       (cmd) => {
+        // Normalize line endings first
+        const normalized = cmd.replace(/\r/g, "\n");
         // Block dangerous shell operators that could chain commands
         const dangerousPatterns = [
-          "\n",     // newlines
+          "\n",     // newlines (including normalized \r)
           ";",      // command separator
           "&&",     // AND chain
           "||",     // OR chain
           "|",      // pipe (could redirect to malicious command)
           "`",      // backtick command substitution
           "$(",     // command substitution
-          "&",      // background execution
+          "&",      // background execution (note: checked after && and ||)
+          ">",      // output redirection
+          "<",      // input redirection
         ];
-        return !dangerousPatterns.some(pattern => cmd.includes(pattern));
+        return !dangerousPatterns.some(pattern => normalized.includes(pattern));
       },
-      { message: "Command must be a single, safe shell command (no pipes, chains, or command substitution)" }
+      { message: "Command must be a single, safe shell command (no pipes, chains, redirects, or command substitution)" }
     )
     .describe("Shell command to test the credential. Use $VALUE as placeholder for the secret value."),
   
