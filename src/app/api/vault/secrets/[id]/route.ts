@@ -136,8 +136,8 @@ export async function PATCH(
   try {
     const body = await request.json();
     
-    // Validate and sanitize updates - prevent overwriting protected fields
-    if (!body || typeof body !== "object") {
+    // Validate and sanitize updates - reject arrays and non-objects
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
       await log.flush();
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
@@ -207,7 +207,8 @@ export async function PATCH(
       ...secrets.credentials[id],
       ...allowedUpdates,
     };
-    secrets._meta.updated = new Date().toISOString().split("T")[0];
+    // Use full ISO timestamp for optimistic locking (not just date)
+    secrets._meta.updated = new Date().toISOString();
 
     // Write back
     const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {
@@ -327,7 +328,8 @@ export async function DELETE(
 
     // Delete credential
     delete secrets.credentials[id];
-    secrets._meta.updated = new Date().toISOString().split("T")[0];
+    // Use full ISO timestamp for optimistic locking (not just date)
+    secrets._meta.updated = new Date().toISOString();
 
     // Write back
     const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {

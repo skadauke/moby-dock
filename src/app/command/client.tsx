@@ -159,19 +159,16 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   }, [persistTaskOrder]);
 
   // Handle task reorder within same column
-  // Board passes the reordered task IDs directly to avoid stale state issues
+  // Board passes the status and reordered task IDs directly to avoid stale state issues
   const handleTaskReorder = useCallback(async (
     taskId: string, 
+    status: Status,
     _newPosition: number,
     reorderedTaskIds: string[]
   ) => {
-    // Find the task's status from our state (just for the API call)
-    const task = tasksRef.current.find(t => t.id === taskId);
-    if (!task) return;
-
     try {
-      // Persist using IDs from Board (not stale parent state)
-      await persistTaskOrder(reorderedTaskIds, task.status);
+      // Persist using IDs and status from Board (not stale parent state)
+      await persistTaskOrder(reorderedTaskIds, status);
     } catch (error) {
       console.error('Failed to reorder task:', error);
     }
@@ -204,6 +201,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
             onAddTask={handleAddTask}
             onTaskStatusChange={handleTaskStatusChange}
             onTaskReorder={handleTaskReorder}
+            disableDragDrop={filter !== "all" || selectedProjectId !== null}
           />
         </div>
       </div>

@@ -11,9 +11,11 @@ interface BoardProps {
   onToggleFlag?: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
   onAddTask?: (status: Status) => void;
-  // Pass reordered task IDs directly to avoid stale state issues
+  // Pass reordered task IDs and status directly to avoid stale state issues
   onTaskStatusChange?: (taskId: string, newStatus: Status, newPosition: number, reorderedTaskIds: string[]) => void;
-  onTaskReorder?: (taskId: string, newPosition: number, reorderedTaskIds: string[]) => void;
+  onTaskReorder?: (taskId: string, status: Status, newPosition: number, reorderedTaskIds: string[]) => void;
+  // Disable DnD when filters are active (filtered list would corrupt ordering)
+  disableDragDrop?: boolean;
 }
 
 export function Board({
@@ -24,6 +26,7 @@ export function Board({
   onAddTask,
   onTaskStatusChange,
   onTaskReorder,
+  disableDragDrop = false,
 }: BoardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
 
@@ -108,21 +111,26 @@ export function Board({
       return [...otherTasks, ...updatedSourceTasks, ...updatedTargetTasks];
     });
     
-    // Pass reordered IDs to parent for persistence (avoids stale state)
-    onTaskStatusChange?.(taskId, newStatus, newPosition, reorderedTaskIds);
+    // Only call parent if a change actually occurred
+    if (reorderedTaskIds.length > 0) {
+      onTaskStatusChange?.(taskId, newStatus, newPosition, reorderedTaskIds);
+    }
   }, [onTaskStatusChange]);
 
   /**
    * Optimistic update for reorder within same column.
    * Removes task from current position, inserts at new position, reindexes.
-   * Returns the reordered task IDs to the parent for persistence.
+   * Returns the reordered task IDs and status to the parent for persistence.
    */
   const handleTaskReorder = useCallback((taskId: string, newPosition: number) => {
     let reorderedTaskIds: string[] = [];
+    let taskStatus: Status | null = null;
     
     setTasks((prev) => {
       const task = prev.find(t => t.id === taskId);
       if (!task) return prev;
+      
+      taskStatus = task.status;
 
       const columnTasks = prev
         .filter(t => t.status === task.status)
@@ -150,8 +158,10 @@ export function Board({
       return [...otherTasks, ...updatedColumnTasks];
     });
     
-    // Pass reordered IDs to parent for persistence (avoids stale state)
-    onTaskReorder?.(taskId, newPosition, reorderedTaskIds);
+    // Only call parent if a change actually occurred
+    if (reorderedTaskIds.length > 0 && taskStatus) {
+      onTaskReorder?.(taskId, taskStatus, newPosition, reorderedTaskIds);
+    }
   }, [onTaskReorder]);
 
   return (
@@ -159,6 +169,7 @@ export function Board({
       tasks={tasks}
       onTaskStatusChange={handleTaskStatusChange}
       onTaskReorder={handleTaskReorder}
+      disabled={disableDragDrop}
     >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 h-full min-h-0">
         {COLUMNS.map((column) => (

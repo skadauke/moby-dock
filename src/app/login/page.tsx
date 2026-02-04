@@ -25,14 +25,26 @@ const ALLOWED_REDIRECT_PATTERNS = [
 
 /**
  * Validate that a return URL is safe (same-origin or known preview domains)
+ * Rejects protocol-relative URLs (//evil.com) and external origins
  */
 function isValidReturnUrl(url: string): boolean {
+  // Reject protocol-relative URLs (//evil.com or \\evil.com)
+  if (url.startsWith('//') || url.startsWith('\\\\')) {
+    return false;
+  }
+  
+  // Check if it's a relative path (same-origin)
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    return true;
+  }
+  
+  // For absolute URLs, check against allowlist
   try {
     const parsed = new URL(url);
     return ALLOWED_REDIRECT_PATTERNS.some(pattern => pattern.test(parsed.origin));
   } catch {
-    // Relative URLs are always safe (same-origin)
-    return url.startsWith('/');
+    // Invalid URL - reject
+    return false;
   }
 }
 

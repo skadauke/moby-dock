@@ -37,6 +37,7 @@ interface KanbanDndProviderProps {
   onTaskStatusChange: (taskId: string, newStatus: Status, newPosition: number) => void;
   onTaskProjectChange?: (taskId: string, projectId: string | null) => void;
   onTaskReorder: (taskId: string, newPosition: number) => void;
+  disabled?: boolean;
 }
 
 export function KanbanDndProvider({
@@ -45,12 +46,14 @@ export function KanbanDndProvider({
   onTaskStatusChange,
   onTaskProjectChange,
   onTaskReorder,
+  disabled = false,
 }: KanbanDndProviderProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
+  // Disable sensors when DnD is disabled (e.g., during filtering)
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      activationConstraint: { distance: disabled ? Infinity : 8 },
     })
   );
 
