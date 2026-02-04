@@ -12,7 +12,9 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    # Review all PRs (use 'skip-review' label to skip via CodeRabbit UI if needed)
+    # Skip review when 'skip-review' label is present
+    ignore_labels:
+      - "skip-review"
 
   path_instructions:
     - path: "**/*.md"
