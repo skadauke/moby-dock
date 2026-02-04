@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { Logger } from 'next-axiom';
+import { validateFilePath } from '@/lib/path-validation';
 
 /** External file server URL */
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || 'https://files.skadauke.dev';
@@ -45,6 +46,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Path is required' }, { status: 400 });
   }
 
+  // Validate path against allowlist
+  const pathValidation = validateFilePath(path);
+  if (!pathValidation.valid) {
+    log.warn('Path validation failed on read', { path, error: pathValidation.error });
+    await log.flush();
+    return NextResponse.json({ error: pathValidation.error }, { status: 403 });
+  }
+
   try {
     const startTime = Date.now();
     const res = await fetch(`${FILE_SERVER_URL}/files?path=${encodeURIComponent(path)}`, {
@@ -52,6 +61,7 @@ export async function GET(request: NextRequest) {
         'Authorization': `Bearer ${FILE_SERVER_TOKEN}`,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(30000),
     });
     const duration = Date.now() - startTime;
 
@@ -115,6 +125,14 @@ export async function POST(request: NextRequest) {
       await log.flush();
       return NextResponse.json({ error: 'Content is required and must be a string' }, { status: 400 });
     }
+
+    // Validate path against allowlist
+    const pathValidation = validateFilePath(path);
+    if (!pathValidation.valid) {
+      log.warn('Path validation failed on write', { path, error: pathValidation.error });
+      await log.flush();
+      return NextResponse.json({ error: pathValidation.error }, { status: 403 });
+    }
     
     log.info('POST /api/files', { path, contentLength: content.length });
 
@@ -126,6 +144,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ path, content }),
+      signal: AbortSignal.timeout(30000),
     });
     const duration = Date.now() - startTime;
 
@@ -175,6 +194,14 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Path is required' }, { status: 400 });
   }
 
+  // Validate path against allowlist
+  const pathValidation = validateFilePath(path);
+  if (!pathValidation.valid) {
+    log.warn('Path validation failed on delete', { path, error: pathValidation.error });
+    await log.flush();
+    return NextResponse.json({ error: pathValidation.error }, { status: 403 });
+  }
+
   try {
     const startTime = Date.now();
     const res = await fetch(`${FILE_SERVER_URL}/files?path=${encodeURIComponent(path)}`, {
@@ -183,6 +210,7 @@ export async function DELETE(request: NextRequest) {
         'Authorization': `Bearer ${FILE_SERVER_TOKEN}`,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(30000),
     });
     const duration = Date.now() - startTime;
 

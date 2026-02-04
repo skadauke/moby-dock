@@ -2,39 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { z } from "zod";
+import { isSafeObjectKey } from "@/lib/path-validation";
+import type { SecretsFile } from "@/lib/vault";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 const SECRETS_PATH = "~/.openclaw/credentials/secrets.json";
 
-interface Credential {
-  value?: string;
-  client_id?: string;
-  client_secret?: string;
-  url?: string;
-  anon_key?: string;
-  service_role_key?: string;
-  auth_token?: string;
-  type: string;
-  service: string;
-  account?: string;
-  email?: string;
-  scopes?: string[];
-  project?: string;
-  expires: string | null;
-  created: string;
-  used_by: string[];
-  notes?: string;
-}
+/** Allowed fields for PATCH updates (whitelist) */
+const ALLOWED_UPDATE_FIELDS = [
+  'value', 'client_id', 'client_secret', 'url', 'anon_key', 
+  'service_role_key', 'auth_token', 'type', 'service', 'account',
+  'email', 'scopes', 'project', 'expires', 'used_by', 'notes', 'test'
+] as const;
 
-interface SecretsFile {
-  credentials: Record<string, Credential>;
-  _meta: {
-    version: number;
-    updated: string;
-    check_expiry_days_before: number;
-  };
-}
+/** Schema for PATCH update validation */
+const CredentialUpdateSchema = z.object({
+  value: z.string().optional(),
+  client_id: z.string().optional(),
+  client_secret: z.string().optional(),
+  url: z.string().url().optional().nullable(),
+  anon_key: z.string().optional(),
+  service_role_key: z.string().optional(),
+  auth_token: z.string().optional(),
+  type: z.string().min(1).max(50).optional(),
+  service: z.string().min(1).max(100).optional(),
+  account: z.string().max(200).optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  scopes: z.array(z.string()).optional(),
+  project: z.string().max(200).optional().nullable(),
+  expires: z.string().nullable().optional(),
+  used_by: z.array(z.string()).optional(),
+  notes: z.string().max(5000).optional().nullable(),
+  test: z.any().optional(), // TestConfig validated separately
+  expectedVersion: z.string(),
+});
 
 // GET /api/vault/secrets/[id] - Get a single secret (with unmasked value)
 export async function GET(
@@ -43,6 +46,13 @@ export async function GET(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
+  
+  // Prototype pollution protection
+  if (!isSafeObjectKey(id)) {
+    log.warn("Dangerous credential ID in URL", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
+  }
   
   // Auth check - critical for secret reveal
   const session = await auth.api.getSession({ headers: await headers() });
@@ -63,6 +73,7 @@ export async function GET(
         headers: {
           Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
         },
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -123,6 +134,13 @@ export async function PATCH(
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
   
+  // Prototype pollution protection
+  if (!isSafeObjectKey(id)) {
+    log.warn("Dangerous credential ID in URL", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
+  }
+  
   // Auth check
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
@@ -138,31 +156,40 @@ export async function PATCH(
   try {
     const body = await request.json();
     
-    // Validate and sanitize updates - reject arrays and non-objects
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    // Validate with Zod schema
+    const validation = CredentialUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      // Log only field names and codes - not raw issues which may contain secret values
+      log.warn("PATCH validation failed", { 
+        id, 
+        failedFields: validation.error.issues.map(i => i.path.join('.')),
+        codes: validation.error.issues.map(i => i.code)
+      });
       await log.flush();
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "Invalid update data",
+        details: validation.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message
+        }))
+      }, { status: 400 });
     }
     
-    // Extract expectedVersion for optimistic locking (required)
-    const { expectedVersion, created, ...allowedUpdates } = body;
+    const { expectedVersion, ...updateData } = validation.data;
     
-    if (!expectedVersion || typeof expectedVersion !== "string") {
-      log.warn("PATCH missing expectedVersion", { id, userId: session.user.id });
-      await log.flush();
-      return NextResponse.json(
-        { error: "expectedVersion is required for updates" },
-        { status: 400 }
-      );
-    }
-    if (created) {
-      log.warn("Attempted to modify protected field 'created'", { id, userId: session.user.id });
+    // Filter to only allowed fields (whitelist)
+    const allowedUpdates: Record<string, unknown> = {};
+    for (const field of ALLOWED_UPDATE_FIELDS) {
+      if (field in updateData && updateData[field as keyof typeof updateData] !== undefined) {
+        allowedUpdates[field] = updateData[field as keyof typeof updateData];
+      }
     }
     
-    // Validate used_by is an array if provided
-    if (allowedUpdates.used_by !== undefined && !Array.isArray(allowedUpdates.used_by)) {
-      await log.flush();
-      return NextResponse.json({ error: "used_by must be an array" }, { status: 400 });
+    // Log if any fields were filtered out
+    const providedFields = Object.keys(updateData);
+    const filteredFields = providedFields.filter(f => !ALLOWED_UPDATE_FIELDS.includes(f as typeof ALLOWED_UPDATE_FIELDS[number]));
+    if (filteredFields.length > 0) {
+      log.warn("Some fields were filtered from PATCH", { id, filteredFields });
     }
 
     // Read existing secrets
@@ -172,6 +199,7 @@ export async function PATCH(
         headers: {
           Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
         },
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -232,6 +260,7 @@ export async function PATCH(
         path: SECRETS_PATH,
         content: JSON.stringify(secrets, null, 2),
       }),
+      signal: AbortSignal.timeout(10000),
     });
 
     const duration = Date.now() - startTime;
@@ -245,10 +274,10 @@ export async function PATCH(
       );
     }
 
-    log.info("Credential updated", { id, duration });
+    log.info("Credential updated", { id, updatedFields: Object.keys(allowedUpdates), duration });
     await log.flush();
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, version: secrets._meta.updated });
   } catch (error) {
     const duration = Date.now() - startTime;
     log.error("Failed to update credential", {
@@ -272,6 +301,13 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
+  
+  // Prototype pollution protection
+  if (!isSafeObjectKey(id)) {
+    log.warn("Dangerous credential ID in URL", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
+  }
   
   // Auth check
   const session = await auth.api.getSession({ headers: await headers() });
@@ -305,6 +341,7 @@ export async function DELETE(
         headers: {
           Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
         },
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -362,6 +399,7 @@ export async function DELETE(
         path: SECRETS_PATH,
         content: JSON.stringify(secrets, null, 2),
       }),
+      signal: AbortSignal.timeout(10000),
     });
 
     const duration = Date.now() - startTime;

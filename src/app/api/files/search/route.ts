@@ -30,11 +30,15 @@ interface SearchResult {
   content: string;
 }
 
+/** Maximum file size to search (1MB) - prevents memory issues */
+const MAX_FILE_SIZE = 1024 * 1024;
+
 async function fetchApi<T>(endpoint: string): Promise<T> {
   const res = await fetch(`${FILE_SERVER_URL}${endpoint}`, {
     headers: {
       Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
     },
+    signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`File server error: ${res.status}`);
   return res.json();
@@ -77,7 +81,18 @@ async function listFilesRecursive(
 
 async function searchInFile(filePath: string, query: string): Promise<SearchResult[]> {
   try {
-    const data = await fetchApi<{ content: string }>(`/files?path=${encodeURIComponent(filePath)}`);
+    const data = await fetchApi<{ content: string; size?: number }>(`/files?path=${encodeURIComponent(filePath)}`);
+    
+    // Skip files that are too large (prevent memory issues)
+    if (data.size && data.size > MAX_FILE_SIZE) {
+      return [];
+    }
+    
+    // Also check content length as fallback
+    if (data.content.length > MAX_FILE_SIZE) {
+      return [];
+    }
+    
     const lines = data.content.split("\n");
     const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
@@ -106,7 +121,8 @@ export async function GET(request: NextRequest) {
   const log = new Logger({ source: "api/files/search" });
   const query = request.nextUrl.searchParams.get("q");
 
-  log.info("GET /api/files/search", { query });
+  // Don't log raw query - users may search for secrets
+  log.info("GET /api/files/search", { queryLength: query?.length });
 
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });
@@ -117,7 +133,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!query || query.length < 2) {
-    log.warn("Search query too short", { query });
+    log.warn("Search query too short", { queryLength: query?.length });
     await log.flush();
     return NextResponse.json({ error: "Query must be at least 2 characters" }, { status: 400 });
   }
@@ -147,7 +163,7 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     log.info("[FileServer] search complete", {
-      query,
+      queryLength: query.length,
       totalFiles: allFiles.length,
       searchedFiles: filesToSearch.length,
       resultCount: allResults.length,
@@ -163,7 +179,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const duration = Date.now() - startTime;
     log.error("[FileServer] search failed", {
-      query,
+      queryLength: query.length,
       error: err instanceof Error ? err.message : String(err),
       duration,
     });

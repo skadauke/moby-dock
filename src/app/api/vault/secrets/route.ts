@@ -2,7 +2,42 @@ import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { z } from "zod";
+import { isSafeObjectKey } from "@/lib/path-validation";
 import type { Credential, SecretsFile } from "@/lib/vault";
+
+/** Schema for validating credential input */
+const CredentialInputSchema = z.object({
+  id: z.string().min(1).max(100),
+  type: z.string().min(1).max(50),
+  service: z.string().min(1).max(100),
+  value: z.string().optional(),
+  client_id: z.string().optional(),
+  client_secret: z.string().optional(),
+  url: z.string().url().optional(),
+  anon_key: z.string().optional(),
+  service_role_key: z.string().optional(),
+  auth_token: z.string().optional(),
+  account: z.string().max(200).optional(),
+  email: z.string().email().optional(),
+  scopes: z.array(z.string()).optional(),
+  project: z.string().max(200).optional(),
+  expires: z.string().nullable().default(null),
+  created: z.string().default(() => new Date().toISOString().split("T")[0]),
+  used_by: z.array(z.string()).default([]),
+  notes: z.string().max(5000).optional(),
+  expectedVersion: z.string().optional(),
+});
+
+/** Schema for validating secrets file structure */
+const SecretsFileSchema = z.object({
+  credentials: z.record(z.string(), z.any()),
+  _meta: z.object({
+    version: z.number(),
+    updated: z.string(),
+    check_expiry_days_before: z.number(),
+  }),
+});
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
@@ -31,6 +66,7 @@ export async function GET() {
         headers: {
           Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
         },
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -46,7 +82,29 @@ export async function GET() {
     }
 
     const { content } = await res.json();
-    const secrets: SecretsFile = JSON.parse(content);
+    
+    // Parse and validate secrets file structure
+    let secrets: SecretsFile;
+    try {
+      const parsed = JSON.parse(content);
+      const validated = SecretsFileSchema.safeParse(parsed);
+      if (!validated.success) {
+        log.error("Secrets file schema validation failed", { issues: validated.error.issues });
+        await log.flush();
+        return NextResponse.json(
+          { error: "Secrets file is corrupted or malformed" },
+          { status: 500 }
+        );
+      }
+      secrets = parsed as SecretsFile;
+    } catch (parseError) {
+      log.error("Failed to parse secrets JSON", { error: String(parseError) });
+      await log.flush();
+      return NextResponse.json(
+        { error: "Secrets file contains invalid JSON" },
+        { status: 500 }
+      );
+    }
 
     // Mask all secret values
     const maskedCredentials = Object.entries(secrets.credentials).map(
@@ -119,42 +177,36 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // Input validation - reject arrays and non-objects
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    // Validate with Zod schema
+    const validation = CredentialInputSchema.safeParse(body);
+    if (!validation.success) {
+      // Log only field names and codes - not raw issues which may contain secret values
+      log.warn("Credential validation failed", { 
+        failedFields: validation.error.issues.map(i => i.path.join('.')),
+        codes: validation.error.issues.map(i => i.code)
+      });
       await log.flush();
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "Invalid credential data",
+        details: validation.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message
+        }))
+      }, { status: 400 });
     }
     
-    const { id, type, service, value, used_by, expectedVersion, ...rest } = body;
-
-    if (!id || typeof id !== "string") {
-      await log.flush();
-      return NextResponse.json({ error: "ID is required and must be a string" }, { status: 400 });
-    }
+    const { id, expectedVersion, ...credentialData } = validation.data;
     
-    if (!type || typeof type !== "string") {
+    // Prototype pollution protection
+    if (!isSafeObjectKey(id)) {
+      log.warn("Dangerous credential ID rejected", { id });
       await log.flush();
-      return NextResponse.json({ error: "Type is required and must be a string" }, { status: 400 });
-    }
-    
-    if (!service || typeof service !== "string") {
-      await log.flush();
-      return NextResponse.json({ error: "Service is required and must be a string" }, { status: 400 });
-    }
-    
-    // Validate used_by is an array if provided
-    if (used_by !== undefined && !Array.isArray(used_by)) {
-      await log.flush();
-      return NextResponse.json({ error: "used_by must be an array" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
     }
     
     // Build validated credential object
     const credential = {
-      type,
-      service,
-      value,
-      used_by: used_by || [],
-      ...rest,
+      ...credentialData,
     };
 
     // Read existing secrets
@@ -164,6 +216,7 @@ export async function POST(request: Request) {
         headers: {
           Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
         },
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -206,11 +259,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Add new credential
-    secrets.credentials[id] = {
-      ...credential,
-      created: credential.created || new Date().toISOString().split("T")[0],
-    };
+    // Add new credential (created has default from schema)
+    secrets.credentials[id] = credential as Credential;
     // Use full ISO timestamp for optimistic locking (not just date)
     secrets._meta.updated = new Date().toISOString();
 
@@ -225,6 +275,7 @@ export async function POST(request: Request) {
         path: SECRETS_PATH,
         content: JSON.stringify(secrets, null, 2),
       }),
+      signal: AbortSignal.timeout(10000),
     });
 
     const duration = Date.now() - startTime;
