@@ -19,4 +19,4 @@ export { testScriptPrompt, TEST_SCRIPT_SYSTEM_PROMPT } from "./prompts/test-scri
 export { rotationUrlPrompt, ROTATION_URL_SYSTEM_PROMPT } from "./prompts/rotation-url";
 
 // Client
-export { openai, DEFAULT_MODEL } from "./client";
+export { getOpenAI, DEFAULT_MODEL } from "./client";

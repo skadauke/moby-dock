@@ -10,7 +10,7 @@
 
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { openai, DEFAULT_MODEL } from "./client";
+import { getOpenAI, DEFAULT_MODEL } from "./client";
 
 export interface AiAssistOptions<T extends z.ZodTypeAny> {
   /** Zod schema for the expected output structure */
@@ -80,7 +80,7 @@ export async function aiAssist<T extends z.ZodTypeAny>(
         : prompt;
 
       const result = await generateText({
-        model: openai(model),
+        model: getOpenAI()(model),
         output: Output.object({ schema }),
         system: systemPrompt,
         prompt: currentPrompt,

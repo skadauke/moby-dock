@@ -48,11 +48,35 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body: RequestBody = await request.json();
+    // Parse JSON with explicit error handling
+    let body: RequestBody;
+    try {
+      const parsed = await request.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        log.warn("Invalid request body type");
+        await log.flush();
+        return NextResponse.json(
+          { error: "Request body must be a JSON object" },
+          { status: 400 }
+        );
+      }
+      body = parsed as RequestBody;
+    } catch {
+      log.warn("Failed to parse JSON body");
+      await log.flush();
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 }
+      );
+    }
 
-    // Validate required fields
+    // Validate required fields (log only field presence, not values)
     if (!body.id || !body.type || !body.service) {
-      log.warn("Missing required fields", { body });
+      log.warn("Missing required fields", {
+        hasId: !!body.id,
+        hasType: !!body.type,
+        hasService: !!body.service,
+      });
       await log.flush();
       return NextResponse.json(
         { error: "Missing required fields: id, type, service" },

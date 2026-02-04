@@ -13,6 +13,14 @@ export const TestScriptSchema = z.object({
   /** Shell command to test the credential. Use $VALUE as placeholder for the secret. */
   testCommand: z
     .string()
+    .refine(
+      (cmd) => cmd.includes("$VALUE"),
+      { message: "Command must include $VALUE placeholder for the secret" }
+    )
+    .refine(
+      (cmd) => !cmd.includes("\n") && !cmd.includes(";") && !cmd.includes("&&"),
+      { message: "Command must be a single, safe shell command (no newlines, semicolons, or &&)" }
+    )
     .describe("Shell command to test the credential. Use $VALUE as placeholder for the secret value."),
   
   /** What indicates the credential is valid (e.g., "HTTP 200", "authenticated") */
