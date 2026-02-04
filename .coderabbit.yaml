@@ -5,6 +5,10 @@ reviews:
   # Request changes (blocking) instead of just commenting when issues found
   request_changes_workflow: true
   high_level_summary: true
+  # Disable docstring coverage check (we don't enforce JSDoc in this project)
+  pre_merge_checks:
+    docstring_coverage:
+      enabled: false
   auto_review:
     enabled: true
     drafts: false
