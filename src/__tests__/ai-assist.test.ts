@@ -51,7 +51,7 @@ describe("aiAssist", () => {
     }
   });
 
-  it("retries on validation error with feedback", async () => {
+  it("retries on validation error with feedback in prompt", async () => {
     // First call fails validation
     mockGenerateText.mockRejectedValueOnce(
       new Error("JSON parse error: invalid format")
@@ -69,8 +69,12 @@ describe("aiAssist", () => {
 
     expect(result.success).toBe(true);
     expect(result.attempts).toBe(2);
-    // Verify retry included error feedback
     expect(mockGenerateText).toHaveBeenCalledTimes(2);
+    
+    // Verify second call included error feedback in the prompt
+    const secondCallArgs = mockGenerateText.mock.calls[1][0];
+    expect(secondCallArgs.prompt).toContain("JSON parse error");
+    expect(secondCallArgs.prompt).toContain("Please fix");
   });
 
   it("fails after max retries exceeded", async () => {
@@ -118,6 +122,42 @@ describe("aiAssist", () => {
 
     // The model parameter is used internally - we verify the call succeeded
     expect(result.success).toBe(true);
+  });
+
+  it("uses default retry settings when not specified", async () => {
+    mockGenerateText.mockRejectedValue(
+      new Error("JSON parse error: invalid")
+    );
+
+    const result = await aiAssist({
+      schema: testSchema,
+      prompt: "Generate test data",
+      // No maxValidationRetries specified - should use default
+    });
+
+    expect(result.success).toBe(false);
+    // Default is 2 retries = 3 total attempts
+    expect(result.attempts).toBe(3);
+  });
+
+  it("handles timeout errors gracefully", async () => {
+    // Simulate a timeout-like error
+    const timeoutError = new Error("Request timed out");
+    timeoutError.name = "AbortError";
+    mockGenerateText.mockRejectedValueOnce(timeoutError);
+
+    const result = await aiAssist({
+      schema: testSchema,
+      prompt: "Generate test data",
+      timeoutMs: 1000,
+    });
+
+    // Timeout is not a validation error, so no retries
+    expect(result.success).toBe(false);
+    expect(result.attempts).toBe(1);
+    if (!result.success) {
+      expect(result.error).toContain("timed out");
+    }
   });
 });
 

@@ -13,7 +13,9 @@ describe('FileServerClient', () => {
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    // Don't use vi.restoreAllMocks() - it removes the global fetch stub
+    // and subsequent tests could hit real network
+    // mockReset() in beforeEach is sufficient
     fileServer.clearToken() // Reset auth state between tests
   })
 
