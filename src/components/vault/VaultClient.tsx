@@ -44,7 +44,6 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Circle,
 } from "lucide-react";
 import {
   Tooltip,
@@ -564,7 +563,7 @@ export function VaultClient() {
                         {testError.message}
                       </span>
                     )}
-                    {cred.lastTestResult && !testError?.id && (
+                    {cred.lastTestResult && testError?.id !== cred.id && (
                       <span className={cn(
                         "text-xs transition-opacity",
                         cred.lastTestResult.success ? "text-green-400/70" : "text-red-400/70"
