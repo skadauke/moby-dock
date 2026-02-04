@@ -205,7 +205,7 @@ export async function initializeDefaultQuickAccess(
     { name: "USER.md", path: `${homeDir}/clawd/USER.md`, description: "User info" },
     { name: "IDENTITY.md", path: `${homeDir}/clawd/IDENTITY.md`, description: "Name & avatar" },
     { name: "MEMORY.md", path: `${homeDir}/clawd/MEMORY.md`, description: "Long-term memory" },
-    { name: "clawdbot.json", path: `${homeDir}/.clawdbot/clawdbot.json`, description: "Gateway config" },
+    { name: "openclaw.json", path: `${homeDir}/.openclaw/openclaw.json`, description: "Gateway config" },
   ];
 
   try {

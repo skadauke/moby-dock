@@ -145,6 +145,15 @@ export function ConfigClient() {
     loadFile(path);
   }, [hasChanges, loadFile]);
 
+  // Handle adding file to Quick Access (via (+) button in FileTree)
+  const handleAddToQuickAccess = useCallback((path: string, name: string) => {
+    // Access the QuickAccess add handler via window (set by QuickAccess component)
+    const addFn = (window as unknown as { __quickAccessAdd?: (path: string, name: string) => Promise<void> }).__quickAccessAdd;
+    if (addFn) {
+      addFn(path, name);
+    }
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -196,6 +205,7 @@ export function ConfigClient() {
               baseDescription={base.description}
               selectedPath={selectedPath}
               onSelectFile={handleSelectFile}
+              onAddToQuickAccess={handleAddToQuickAccess}
             />
           ))}
         </div>
