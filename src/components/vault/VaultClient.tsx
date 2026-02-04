@@ -107,6 +107,7 @@ const CREDENTIAL_TYPES = [
 
 export function VaultClient() {
   const [credentials, setCredentials] = useState<MaskedCredential[]>([]);
+  const [secretsVersion, setSecretsVersion] = useState<string | null>(null);
   const [expiryWarningDays, setExpiryWarningDays] = useState(30); // Default, updated from meta
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +130,10 @@ export function VaultClient() {
       if (!res.ok) throw new Error("Failed to fetch secrets");
       const data = await res.json();
       setCredentials(data.credentials);
+      // Store version for optimistic locking on updates/deletes
+      if (data.meta?.updated) {
+        setSecretsVersion(data.meta.updated);
+      }
       // Use expiry warning days from secrets file meta if available
       if (data.meta?.check_expiry_days_before) {
         setExpiryWarningDays(data.meta.check_expiry_days_before);
@@ -198,11 +203,22 @@ export function VaultClient() {
   const deleteCredential = async (id: string) => {
     try {
       setActionError(null);
-      const res = await fetch(`/api/vault/secrets/${encodeURIComponent(id)}`, {
+      
+      // Build URL with expectedVersion for optimistic locking
+      const url = new URL(`/api/vault/secrets/${encodeURIComponent(id)}`, window.location.origin);
+      if (secretsVersion) {
+        url.searchParams.set("expectedVersion", secretsVersion);
+      }
+      
+      const res = await fetch(url.toString(), {
         method: "DELETE",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        // If conflict, refresh to get latest version
+        if (res.status === 409) {
+          await fetchCredentials();
+        }
         throw new Error(data.error || "Failed to delete");
       }
       // Use functional updates to avoid stale closures
