@@ -129,7 +129,14 @@ function getSpec(baseDir) {
 }
 
 async function callCodexResponses(context) {
-  const prompt = `You are an expert code reviewer doing an in-depth review. Focus on things that automated tools and linters would MISS.
+  const prompt = `You are an expert code reviewer doing an EXHAUSTIVE, COMPREHENSIVE review. 
+
+## CRITICAL INSTRUCTION
+**List ALL issues you find in a SINGLE pass.** Do not hold back, prioritize, or limit the number of findings. We want the complete picture upfront — not spread across multiple review iterations. If you find 20 issues, list all 20. If you find 50, list all 50.
+
+Be thorough but avoid duplicates. Each issue should be actionable and specific.
+
+Focus on things that automated tools and linters would MISS.
 
 ## Your Review Focus
 
@@ -212,7 +219,13 @@ Format each finding as:
    Suggested fix: How to resolve it
 
 Be specific and actionable. Skip obvious linter-catchable issues.
-End with a brief summary and version bump recommendation.`;
+
+**REMINDER: List ALL issues you find. Do not limit yourself to a certain number or hold back "minor" issues for later. Complete exhaustive review in one pass.**
+
+End with:
+1. Total count of issues found by severity (Critical/Warning/Suggestion)
+2. Brief summary
+3. Version bump recommendation`;
 
   // Submit request in background mode for long-running reviews
   const submitResponse = await fetch('https://api.openai.com/v1/responses', {
