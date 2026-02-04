@@ -75,17 +75,26 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
             {creator?.emoji}
           </span>
           
-          {/* Title + flag */}
+          {/* Title */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className={`font-medium text-sm leading-snug break-words flex-1 ${isDone ? "line-through text-zinc-500" : "text-zinc-100"}`}>
-                {task.title}
-              </h3>
-              {task.needsReview && (
-                <Flag className="h-3 w-3 text-amber-500 fill-amber-500 flex-shrink-0" />
-              )}
-            </div>
+            <h3 className={`font-medium text-sm leading-snug break-words ${isDone ? "line-through text-zinc-500" : "text-zinc-100"}`}>
+              {task.title}
+            </h3>
           </div>
+          
+          {/* Flag toggle button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-6 w-6 flex-shrink-0 ${task.needsReview ? "text-amber-500" : "text-zinc-600 hover:text-amber-500"}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFlag?.(task.id);
+            }}
+            title={task.needsReview ? "Clear flag" : "Flag for review"}
+          >
+            <Flag className={`h-3.5 w-3.5 ${task.needsReview ? "fill-amber-500" : ""}`} />
+          </Button>
           
           {/* Dropdown menu */}
           <DropdownMenu>

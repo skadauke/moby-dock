@@ -336,7 +336,6 @@ export function QuickAccess({ selectedPath, onSelectFile, onItemAdded }: QuickAc
     >
       <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-2 mb-2">
         Quick Access
-        <span className="text-[10px] font-normal ml-1 text-zinc-600">(drag files here)</span>
       </h3>
 
       <DndContext

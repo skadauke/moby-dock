@@ -152,13 +152,16 @@ export function FileTree({
 }: FileTreeProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false); // Collapsed by default
   const [error, setError] = useState<string | null>(null);
 
+  // Load files when opened for the first time
   useEffect(() => {
-    loadRoot();
+    if (isOpen && files.length === 0 && !isLoading && !error) {
+      loadRoot();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePath]);
+  }, [isOpen]);
 
   const loadRoot = async () => {
     setIsLoading(true);
