@@ -31,7 +31,7 @@ export async function GET() {
     configured,
     model: configured ? DEFAULT_MODEL : null,
     features: configured
-      ? ["generate-test-script", "generate-rotation-url"]
+      ? ["generate-test-script", "generate-rotation-url", "generate-test-config"]
       : [],
   });
 }
