@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.FILE_SERVER_TOKEN || "";
@@ -41,7 +43,16 @@ export async function GET(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
-  log.info("GET /api/vault/secrets/[id]", { id });
+  
+  // Auth check - critical for secret reveal
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized access attempt to vault secret", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("GET /api/vault/secrets/[id]", { id, userId: session.user.id });
 
   const startTime = Date.now();
 
@@ -109,7 +120,16 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
-  log.info("PATCH /api/vault/secrets/[id]", { id });
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized access attempt to update vault secret", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("PATCH /api/vault/secrets/[id]", { id, userId: session.user.id });
 
   const startTime = Date.now();
 
@@ -204,7 +224,16 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
-  log.info("DELETE /api/vault/secrets/[id]", { id });
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized access attempt to delete vault secret", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("DELETE /api/vault/secrets/[id]", { id, userId: session.user.id });
 
   const startTime = Date.now();
 

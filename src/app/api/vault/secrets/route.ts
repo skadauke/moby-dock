@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.FILE_SERVER_TOKEN || "";
@@ -37,7 +39,16 @@ interface SecretsFile {
 // GET /api/vault/secrets - List all secrets (values masked)
 export async function GET() {
   const log = new Logger({ source: "api/vault/secrets" });
-  log.info("GET /api/vault/secrets");
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized access attempt to vault");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("GET /api/vault/secrets", { userId: session.user.id });
 
   const startTime = Date.now();
 
@@ -117,7 +128,16 @@ export async function GET() {
 // POST /api/vault/secrets - Add a new credential
 export async function POST(request: Request) {
   const log = new Logger({ source: "api/vault/secrets" });
-  log.info("POST /api/vault/secrets");
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized access attempt to vault");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("POST /api/vault/secrets", { userId: session.user.id });
 
   const startTime = Date.now();
 

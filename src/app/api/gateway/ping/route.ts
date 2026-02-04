@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 
 export async function POST() {
   const log = new Logger({ source: "api/gateway/ping" });
-  log.info("POST /api/gateway/ping");
+  
+  // Auth check
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    log.warn("Unauthorized access attempt to gateway ping");
+    await log.flush();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  log.info("POST /api/gateway/ping", { userId: session.user.id });
 
   const startTime = Date.now();
 
