@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { validateFilePath } from "@/lib/path-validation";
 
 /** External file server URL */
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "https://files.skadauke.dev";
@@ -41,6 +42,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Directory path is required" }, { status: 400 });
   }
 
+  // Validate path against allowlist
+  const pathValidation = validateFilePath(dir);
+  if (!pathValidation.valid) {
+    log.warn("Path validation failed on list", { dir, error: pathValidation.error });
+    await log.flush();
+    return NextResponse.json({ error: pathValidation.error }, { status: 403 });
+  }
+
   try {
     const startTime = Date.now();
     const res = await fetch(`${FILE_SERVER_URL}/files/list?dir=${encodeURIComponent(dir)}`, {
@@ -48,6 +57,7 @@ export async function GET(request: NextRequest) {
         Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(30000),
     });
     const duration = Date.now() - startTime;
 

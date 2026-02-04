@@ -30,11 +30,15 @@ interface SearchResult {
   content: string;
 }
 
+/** Maximum file size to search (1MB) - prevents memory issues */
+const MAX_FILE_SIZE = 1024 * 1024;
+
 async function fetchApi<T>(endpoint: string): Promise<T> {
   const res = await fetch(`${FILE_SERVER_URL}${endpoint}`, {
     headers: {
       Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
     },
+    signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`File server error: ${res.status}`);
   return res.json();
@@ -77,7 +81,18 @@ async function listFilesRecursive(
 
 async function searchInFile(filePath: string, query: string): Promise<SearchResult[]> {
   try {
-    const data = await fetchApi<{ content: string }>(`/files?path=${encodeURIComponent(filePath)}`);
+    const data = await fetchApi<{ content: string; size?: number }>(`/files?path=${encodeURIComponent(filePath)}`);
+    
+    // Skip files that are too large (prevent memory issues)
+    if (data.size && data.size > MAX_FILE_SIZE) {
+      return [];
+    }
+    
+    // Also check content length as fallback
+    if (data.content.length > MAX_FILE_SIZE) {
+      return [];
+    }
+    
     const lines = data.content.split("\n");
     const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
