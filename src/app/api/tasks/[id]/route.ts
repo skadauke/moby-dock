@@ -1,69 +1,139 @@
+/**
+ * Task Detail API Routes
+ *
+ * Single task operations: get, update, delete.
+ *
+ * @module api/tasks/[id]
+ */
+
 import { NextRequest, NextResponse } from "next/server";
+import { Logger } from "next-axiom";
 import { getTaskById, updateTask, deleteTask } from "@/lib/api-store";
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
-// GET /api/tasks/[id]
+/**
+ * GET /api/tasks/[id]
+ * Get a single task by ID
+ */
 export async function GET(_request: NextRequest, { params }: Params) {
+  const log = new Logger({ source: "api/tasks/[id]" });
   const { id } = await params;
+
+  log.info("GET /api/tasks/[id]", { taskId: id });
+
+  const startTime = Date.now();
   const result = await getTaskById(id);
-  
+  const duration = Date.now() - startTime;
+
   if (!result.ok) {
+    log.warn("[Supabase] getTaskById failed", {
+      taskId: id,
+      error: result.error.message,
+      duration,
+    });
+    await log.flush();
     return NextResponse.json(
       { error: result.error.message },
       { status: result.error.httpStatus }
     );
   }
 
+  log.info("[Supabase] getTaskById success", { taskId: id, duration });
+  await log.flush();
+
   return NextResponse.json(result.data);
 }
 
-// PATCH /api/tasks/[id]
+/**
+ * PATCH /api/tasks/[id]
+ * Update a task
+ */
 export async function PATCH(request: NextRequest, { params }: Params) {
+  const log = new Logger({ source: "api/tasks/[id]" });
   const { id } = await params;
-  
+
   let body;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 }
-    );
+    log.warn("PATCH /api/tasks/[id] - invalid JSON", { taskId: id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 }
-    );
+    log.warn("PATCH /api/tasks/[id] - invalid body type", { taskId: id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Log what fields are being updated (without values for privacy)
+  const updatedFields = Object.keys(body);
+  log.info("PATCH /api/tasks/[id]", {
+    taskId: id,
+    updatedFields,
+  });
+
+  const startTime = Date.now();
   const result = await updateTask(id, body);
-  
+  const duration = Date.now() - startTime;
+
   if (!result.ok) {
+    log.error("[Supabase] updateTask failed", {
+      taskId: id,
+      updatedFields,
+      error: result.error.message,
+      duration,
+    });
+    await log.flush();
     return NextResponse.json(
       { error: result.error.message },
       { status: result.error.httpStatus }
     );
   }
+
+  log.info("[Supabase] updateTask success", {
+    taskId: id,
+    updatedFields,
+    duration,
+  });
+  await log.flush();
 
   return NextResponse.json(result.data);
 }
 
-// DELETE /api/tasks/[id]
+/**
+ * DELETE /api/tasks/[id]
+ * Delete a task
+ */
 export async function DELETE(_request: NextRequest, { params }: Params) {
+  const log = new Logger({ source: "api/tasks/[id]" });
   const { id } = await params;
+
+  log.info("DELETE /api/tasks/[id]", { taskId: id });
+
+  const startTime = Date.now();
   const result = await deleteTask(id);
-  
+  const duration = Date.now() - startTime;
+
   if (!result.ok) {
+    log.error("[Supabase] deleteTask failed", {
+      taskId: id,
+      error: result.error.message,
+      duration,
+    });
+    await log.flush();
     return NextResponse.json(
       { error: result.error.message },
       { status: result.error.httpStatus }
     );
   }
+
+  log.info("[Supabase] deleteTask success", { taskId: id, duration });
+  await log.flush();
 
   return NextResponse.json({ success: true });
 }

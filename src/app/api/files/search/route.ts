@@ -1,4 +1,13 @@
+/**
+ * File Search API
+ *
+ * Search across all workspace files for a query string.
+ *
+ * @module api/files/search
+ */
+
 import { NextRequest, NextResponse } from "next/server";
+import { Logger } from "next-axiom";
 import { homedir } from "os";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -7,11 +16,7 @@ const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "https://files.skadauke.d
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 const HOME = process.env.HOME_DIR || homedir();
 
-const BASE_PATHS = [
-  `${HOME}/clawd`,
-  `${HOME}/.openclaw`,
-  `${HOME}/.config/moby`,
-];
+const BASE_PATHS = [`${HOME}/clawd`, `${HOME}/.openclaw`, `${HOME}/.config/moby`];
 
 interface FileInfo {
   name: string;
@@ -35,16 +40,22 @@ async function fetchApi<T>(endpoint: string): Promise<T> {
   return res.json();
 }
 
-async function listFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0): Promise<string[]> {
+async function listFilesRecursive(
+  dirPath: string,
+  maxDepth = 3,
+  currentDepth = 0
+): Promise<string[]> {
   if (currentDepth >= maxDepth) return [];
-  
+
   try {
-    const data = await fetchApi<{ files: FileInfo[] }>(`/files/list?dir=${encodeURIComponent(dirPath)}`);
+    const data = await fetchApi<{ files: FileInfo[] }>(
+      `/files/list?dir=${encodeURIComponent(dirPath)}`
+    );
     const files: string[] = [];
-    
+
     for (const file of data.files) {
       if (file.name.startsWith(".")) continue; // Skip hidden files
-      
+
       if (file.isDirectory) {
         const subFiles = await listFilesRecursive(file.path, maxDepth, currentDepth + 1);
         files.push(...subFiles);
@@ -56,10 +67,10 @@ async function listFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 
         }
       }
     }
-    
+
     return files;
-  } catch (err) {
-    console.error(`Failed to list ${dirPath}:`, err);
+  } catch {
+    // Silently ignore inaccessible directories
     return [];
   }
 }
@@ -70,7 +81,7 @@ async function searchInFile(filePath: string, query: string): Promise<SearchResu
     const lines = data.content.split("\n");
     const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
-    
+
     lines.forEach((line, index) => {
       if (line.toLowerCase().includes(queryLower)) {
         results.push({
@@ -80,9 +91,9 @@ async function searchInFile(filePath: string, query: string): Promise<SearchResu
         });
       }
     });
-    
+
     return results;
-  } catch (err) {
+  } catch {
     return [];
   }
 }
@@ -92,18 +103,27 @@ async function searchInFile(filePath: string, query: string): Promise<SearchResu
  * Search across all workspace files
  */
 export async function GET(request: NextRequest) {
+  const log = new Logger({ source: "api/files/search" });
+  const query = request.nextUrl.searchParams.get("q");
+
+  log.info("GET /api/files/search", { query });
+
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
+    log.warn("Unauthorized search attempt", { query });
+    await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const query = request.nextUrl.searchParams.get("q");
-  
   if (!query || query.length < 2) {
+    log.warn("Search query too short", { query });
+    await log.flush();
     return NextResponse.json({ error: "Query must be at least 2 characters" }, { status: 400 });
   }
-  
+
+  const startTime = Date.now();
+
   try {
     // Get all searchable files
     const allFiles: string[] = [];
@@ -111,26 +131,43 @@ export async function GET(request: NextRequest) {
       const files = await listFilesRecursive(basePath);
       allFiles.push(...files);
     }
-    
+
     // Search in each file (limit to first 100 files for performance)
     const filesToSearch = allFiles.slice(0, 100);
     const allResults: SearchResult[] = [];
-    
+
     for (const filePath of filesToSearch) {
       const results = await searchInFile(filePath, query);
       allResults.push(...results);
-      
+
       // Limit total results
       if (allResults.length >= 50) break;
     }
-    
+
+    const duration = Date.now() - startTime;
+
+    log.info("[FileServer] search complete", {
+      query,
+      totalFiles: allFiles.length,
+      searchedFiles: filesToSearch.length,
+      resultCount: allResults.length,
+      duration,
+    });
+    await log.flush();
+
     return NextResponse.json({
       results: allResults.slice(0, 50),
       totalFiles: allFiles.length,
       searchedFiles: filesToSearch.length,
     });
   } catch (err) {
-    console.error("Search error:", err);
+    const duration = Date.now() - startTime;
+    log.error("[FileServer] search failed", {
+      query,
+      error: err instanceof Error ? err.message : String(err),
+      duration,
+    });
+    await log.flush();
     return NextResponse.json({ error: "Search failed" }, { status: 500 });
   }
 }
