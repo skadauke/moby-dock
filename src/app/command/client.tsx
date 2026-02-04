@@ -138,9 +138,43 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   const handleTaskStatusChange = useCallback(async (
     taskId: string, 
     newStatus: Status, 
-    _newPosition: number,
+    newPosition: number,
     reorderedTaskIds: string[]
   ) => {
+    // Get source status before updating parent state
+    const task = tasksRef.current.find(t => t.id === taskId);
+    const sourceStatus = task?.status;
+    
+    // Update parent state to stay in sync with Board's optimistic update
+    setTasks((prev) => {
+      const updated = prev.map(t => {
+        if (t.id === taskId) {
+          return { ...t, status: newStatus, position: newPosition };
+        }
+        // Reindex target column tasks based on reorderedTaskIds
+        if (t.status === newStatus && t.id !== taskId) {
+          const newPos = reorderedTaskIds.indexOf(t.id);
+          if (newPos !== -1) {
+            return { ...t, position: newPos };
+          }
+        }
+        return t;
+      });
+      
+      // Reindex source column to fill the gap (if different column)
+      if (sourceStatus && sourceStatus !== newStatus) {
+        const sourceColumnTasks = updated
+          .filter(t => t.status === sourceStatus)
+          .sort((a, b) => a.position - b.position);
+        sourceColumnTasks.forEach((t, i) => {
+          const idx = updated.findIndex(u => u.id === t.id);
+          if (idx !== -1) updated[idx] = { ...updated[idx], position: i };
+        });
+      }
+      
+      return updated;
+    });
+    
     try {
       // Update the task's status
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -150,8 +184,19 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
       });
       if (!res.ok) throw new Error('Failed to update task status');
       
-      // Persist the new order using IDs from Board (not stale parent state)
+      // Persist the target column order
       await persistTaskOrder(reorderedTaskIds, newStatus);
+      
+      // Also persist source column order (to fill gaps in DB)
+      if (sourceStatus && sourceStatus !== newStatus) {
+        const sourceColumnIds = tasksRef.current
+          .filter(t => t.status === sourceStatus && t.id !== taskId)
+          .sort((a, b) => a.position - b.position)
+          .map(t => t.id);
+        if (sourceColumnIds.length > 0) {
+          await persistTaskOrder(sourceColumnIds, sourceStatus);
+        }
+      }
     } catch (error) {
       console.error('Failed to update task status:', error);
       // TODO: Could revert optimistic update here
@@ -161,13 +206,26 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   // Handle task reorder within same column
   // Board passes the status and reordered task IDs directly to avoid stale state issues
   const handleTaskReorder = useCallback(async (
-    taskId: string, 
+    _taskId: string, 
     status: Status,
     _newPosition: number,
     reorderedTaskIds: string[]
   ) => {
+    // Update parent state to stay in sync with Board's optimistic update
+    setTasks((prev) => {
+      return prev.map(t => {
+        if (t.status === status) {
+          const newPos = reorderedTaskIds.indexOf(t.id);
+          if (newPos !== -1) {
+            return { ...t, position: newPos };
+          }
+        }
+        return t;
+      });
+    });
+    
     try {
-      // Persist using IDs and status from Board (not stale parent state)
+      // Persist using IDs and status from Board
       await persistTaskOrder(reorderedTaskIds, status);
     } catch (error) {
       console.error('Failed to reorder task:', error);

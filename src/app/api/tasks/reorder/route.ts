@@ -8,8 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { checkApiAuth } from "@/lib/api-auth";
 import { reorderTasks } from "@/lib/api-store";
 import { Status } from "@/types/kanban";
 
@@ -20,9 +19,9 @@ import { Status } from "@/types/kanban";
 export async function POST(request: NextRequest) {
   const log = new Logger({ source: "api/tasks/reorder" });
 
-  // Auth check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) {
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
     log.warn("Unauthorized task reorder attempt");
     await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -59,6 +58,7 @@ export async function POST(request: NextRequest) {
   log.info("POST /api/tasks/reorder", {
     status,
     taskCount: taskIds.length,
+    userId: authResult.userId,
   });
 
   // Map IN_PROGRESS to READY (DB compatibility)
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
       taskCount: taskIds.length,
       error: result.error.message,
       duration,
+      userId: authResult.userId,
     });
     await log.flush();
     return NextResponse.json(
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest) {
     status,
     taskCount: taskIds.length,
     duration,
+    userId: authResult.userId,
   });
   await log.flush();
 

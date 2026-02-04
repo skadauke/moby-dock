@@ -8,8 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { checkApiAuth } from "@/lib/api-auth";
 import { getTaskById, updateTask, deleteTask } from "@/lib/api-store";
 
 interface Params {
@@ -23,9 +22,9 @@ interface Params {
 export async function GET(_request: NextRequest, { params }: Params) {
   const log = new Logger({ source: "api/tasks/[id]" });
   
-  // Auth check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) {
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
     log.warn("Unauthorized task read attempt");
     await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,7 +32,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   
   const { id } = await params;
 
-  log.info("GET /api/tasks/[id]", { taskId: id, userId: session.user.id });
+  log.info("GET /api/tasks/[id]", { taskId: id, userId: authResult.userId });
 
   const startTime = Date.now();
   const result = await getTaskById(id);
@@ -65,9 +64,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
 export async function PATCH(request: NextRequest, { params }: Params) {
   const log = new Logger({ source: "api/tasks/[id]" });
   
-  // Auth check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) {
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
     log.warn("Unauthorized task update attempt");
     await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -132,9 +131,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const log = new Logger({ source: "api/tasks/[id]" });
   
-  // Auth check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) {
+  // Auth check (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
     log.warn("Unauthorized task delete attempt");
     await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -142,7 +141,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   
   const { id } = await params;
 
-  log.info("DELETE /api/tasks/[id]", { taskId: id, userId: session.user.id });
+  log.info("DELETE /api/tasks/[id]", { taskId: id, userId: authResult.userId });
 
   const startTime = Date.now();
   const result = await deleteTask(id);
