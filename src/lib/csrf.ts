@@ -25,9 +25,14 @@ function getAllowedOrigins(): Set<string> {
     origins.add(`https://${process.env.VERCEL_URL}`);
   }
 
-  // Add custom BETTER_AUTH_URL if set
+  // Add custom BETTER_AUTH_URL if set (extract origin to handle paths/trailing slashes)
   if (process.env.BETTER_AUTH_URL) {
-    origins.add(process.env.BETTER_AUTH_URL);
+    try {
+      const parsed = new URL(process.env.BETTER_AUTH_URL);
+      origins.add(parsed.origin);
+    } catch {
+      // Invalid URL, skip
+    }
   }
 
   return origins;
@@ -126,7 +131,8 @@ export function validateCsrfOrigin(request: NextRequest): {
  */
 export function shouldCheckCsrf(pathname: string): boolean {
   // Exclude Better Auth routes - they have their own CSRF handling
-  if (pathname.startsWith("/api/auth")) {
+  // Use exact match or prefix with slash to avoid matching /api/authors etc.
+  if (pathname === "/api/auth" || pathname.startsWith("/api/auth/")) {
     return false;
   }
 

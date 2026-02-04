@@ -80,19 +80,21 @@ describe("validateCsrfOrigin", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("allows requests from VERCEL_URL when set", () => {
+    it("allows requests from VERCEL_URL when set", async () => {
       process.env.VERCEL_URL = "moby-dock-preview-123.vercel.app";
 
-      // Re-import to pick up env change
+      // Re-import module to pick up env change
+      vi.resetModules();
+      const { validateCsrfOrigin: validateWithEnv } = await import(
+        "@/lib/csrf"
+      );
+
       const request = createMockRequest({
         origin: "https://moby-dock-preview-123.vercel.app",
       });
 
-      // Need to re-import the module to pick up env change
-      // For simplicity, we'll test that it would be in the allowed list
-      expect(request.headers.get("origin")).toBe(
-        "https://moby-dock-preview-123.vercel.app"
-      );
+      const result = validateWithEnv(request);
+      expect(result.valid).toBe(true);
     });
 
     it("rejects requests from untrusted origins", () => {
@@ -169,9 +171,17 @@ describe("validateCsrfOrigin", () => {
 
 describe("shouldCheckCsrf", () => {
   it("returns false for auth routes", () => {
+    expect(shouldCheckCsrf("/api/auth")).toBe(false);
     expect(shouldCheckCsrf("/api/auth/callback/github")).toBe(false);
     expect(shouldCheckCsrf("/api/auth/sign-in")).toBe(false);
     expect(shouldCheckCsrf("/api/auth/session")).toBe(false);
+  });
+
+  it("returns true for routes that look similar to auth but are not", () => {
+    // These should NOT be excluded from CSRF checking
+    expect(shouldCheckCsrf("/api/authors")).toBe(true);
+    expect(shouldCheckCsrf("/api/authorize")).toBe(true);
+    expect(shouldCheckCsrf("/api/authentication")).toBe(true);
   });
 
   it("returns true for other API routes", () => {
