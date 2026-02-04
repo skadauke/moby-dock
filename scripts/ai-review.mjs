@@ -199,8 +199,18 @@ ${context.codebase}
 
 ---
 
-Review this code. Group findings by severity (🔴 Critical, 🟠 Warning, 🟡 Suggestion).
-For each finding: file path, description, suggested fix.
+Review this code thoroughly.
+
+## Output Format Requirements
+Use EXACTLY these severity prefixes at the start of each finding line:
+- "🔴 Critical:" - Security vulnerabilities, data loss risks, breaking bugs
+- "🟠 Warning:" - Logic errors, missing validation, race conditions, test gaps
+- "🟡 Suggestion:" - Style, readability, minor improvements
+
+Format each finding as:
+🔴 Critical: path/to/file.ts - Description of the issue
+   Suggested fix: How to resolve it
+
 Be specific and actionable. Skip obvious linter-catchable issues.
 End with a brief summary and version bump recommendation.`;
 

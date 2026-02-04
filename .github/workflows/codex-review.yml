@@ -29,6 +29,16 @@ jobs:
         run: |
           node scripts/ai-review.mjs > review.md 2>&1 || true
           cat review.md
+      - name: Check for blocking issues
+        run: |
+          if grep -qE '^🔴 Critical:|^🟠 Warning:' review.md; then
+            echo ""
+            echo "❌ Found Critical or Warning issues - review required"
+            echo "Fix the issues above or add 'skip-review' label to bypass."
+            exit 1
+          else
+            echo "✅ No blocking issues found"
+          fi
       - name: Post PR Comment
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
