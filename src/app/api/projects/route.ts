@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  log.info("POST /api/projects", { name, color });
+  log.info("POST /api/projects", { color, nameLength: name?.length });
 
   const startTime = Date.now();
   const result = await createProject({ name, description, color });
@@ -99,7 +99,6 @@ export async function POST(request: NextRequest) {
 
   if (!result.ok) {
     log.error("[Supabase] createProject failed", {
-      name,
       error: result.error.message,
       duration,
     });
@@ -112,7 +111,6 @@ export async function POST(request: NextRequest) {
 
   log.info("[Supabase] createProject success", {
     projectId: result.data.id,
-    name,
     duration,
   });
   await log.flush();

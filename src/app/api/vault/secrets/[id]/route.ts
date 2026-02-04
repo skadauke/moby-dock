@@ -96,6 +96,8 @@ export async function GET(
     return NextResponse.json({
       id,
       ...credential,
+      // Include version for optimistic locking on subsequent writes
+      currentVersion: secrets._meta.updated,
     });
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -142,8 +144,17 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     
-    // Extract expectedVersion for optimistic locking
+    // Extract expectedVersion for optimistic locking (required)
     const { expectedVersion, created, ...allowedUpdates } = body;
+    
+    if (!expectedVersion || typeof expectedVersion !== "string") {
+      log.warn("PATCH missing expectedVersion", { id, userId: session.user.id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "expectedVersion is required for updates" },
+        { status: 400 }
+      );
+    }
     if (created) {
       log.warn("Attempted to modify protected field 'created'", { id, userId: session.user.id });
     }
@@ -185,7 +196,7 @@ export async function PATCH(
     }
     
     // Optimistic locking: reject if file changed since client's version
-    if (expectedVersion && secrets._meta.updated !== expectedVersion) {
+    if (secrets._meta.updated !== expectedVersion) {
       log.warn("Concurrent modification detected", {
         id,
         expectedVersion,
@@ -270,8 +281,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   
-  // Get expectedVersion from query params for optimistic locking
+  // Get expectedVersion from query params for optimistic locking (required)
   const expectedVersion = request.nextUrl.searchParams.get("expectedVersion");
+  
+  if (!expectedVersion) {
+    log.warn("DELETE missing expectedVersion", { id, userId: session.user.id });
+    await log.flush();
+    return NextResponse.json(
+      { error: "expectedVersion query param is required for deletes" },
+      { status: 400 }
+    );
+  }
   
   log.info("DELETE /api/vault/secrets/[id]", { id, userId: session.user.id, expectedVersion });
 
@@ -309,7 +329,7 @@ export async function DELETE(
     }
     
     // Optimistic locking: reject if file changed since client's version
-    if (expectedVersion && secrets._meta.updated !== expectedVersion) {
+    if (secrets._meta.updated !== expectedVersion) {
       log.warn("Concurrent modification detected on delete", {
         id,
         expectedVersion,

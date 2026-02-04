@@ -12,7 +12,8 @@ interface BoardProps {
   onEditTask?: (task: Task) => void;
   onAddTask?: (status: Status) => void;
   // Pass reordered task IDs and status directly to avoid stale state issues
-  onTaskStatusChange?: (taskId: string, newStatus: Status, newPosition: number, reorderedTaskIds: string[]) => void;
+  // For cross-column moves, also pass sourceColumnIds to persist both columns
+  onTaskStatusChange?: (taskId: string, newStatus: Status, newPosition: number, reorderedTaskIds: string[], sourceStatus: Status | null, sourceColumnIds: string[]) => void;
   onTaskReorder?: (taskId: string, status: Status, newPosition: number, reorderedTaskIds: string[]) => void;
   // Disable DnD when filters are active (filtered list would corrupt ordering)
   disableDragDrop?: boolean;
@@ -60,17 +61,19 @@ export function Board({
   /**
    * Optimistic update for status change (moving task between columns).
    * Reindexes both source and target columns to maintain contiguous positions.
-   * Returns the reordered task IDs to the parent for persistence.
+   * Returns both target and source column IDs to the parent for persistence.
    */
   const handleTaskStatusChange = useCallback((taskId: string, newStatus: Status, newPosition: number) => {
     let reorderedTaskIds: string[] = [];
+    let sourceStatus: Status | null = null;
+    let sourceColumnIds: string[] = [];
     
     setTasks((prev) => {
       // Get the task being moved
       const task = prev.find(t => t.id === taskId);
       if (!task) return prev;
 
-      const sourceStatus = task.status;
+      sourceStatus = task.status;
       const isStatusChange = sourceStatus !== newStatus;
 
       // Get tasks in the target column (excluding the moving task)
@@ -99,6 +102,9 @@ export function Board({
             .sort((a, b) => a.position - b.position)
             .map((t, i) => ({ ...t, position: i }))
         : [];
+      
+      // Capture source column IDs for persistence
+      sourceColumnIds = updatedSourceTasks.map(t => t.id);
 
       // Get tasks not in affected columns (and not the moving task)
       const otherTasks = prev.filter(t => {
@@ -113,7 +119,7 @@ export function Board({
     
     // Only call parent if a change actually occurred
     if (reorderedTaskIds.length > 0) {
-      onTaskStatusChange?.(taskId, newStatus, newPosition, reorderedTaskIds);
+      onTaskStatusChange?.(taskId, newStatus, newPosition, reorderedTaskIds, sourceStatus, sourceColumnIds);
     }
   }, [onTaskStatusChange]);
 

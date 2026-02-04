@@ -78,13 +78,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    log.warn("POST /api/tasks - invalid body type");
+    await log.flush();
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const { title, description, priority, creator, projectId } = body;
 
   log.info("POST /api/tasks", {
-    title,
     priority,
     creator,
     projectId,
+    titleLength: title?.length,
   });
 
   if (!title || typeof title !== "string") {
@@ -106,7 +112,6 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     log.error("[Supabase] createTask failed", {
       error: result.error.message,
-      title,
       duration,
     });
     await log.flush();
@@ -118,7 +123,6 @@ export async function POST(request: NextRequest) {
 
   log.info("[Supabase] createTask success", {
     taskId: result.data.id,
-    title,
     duration,
   });
   await log.flush();

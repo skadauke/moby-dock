@@ -36,6 +36,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    log.warn("POST /api/tasks/reorder - invalid body type");
+    await log.flush();
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const { taskIds, status } = body;
 
   if (!Array.isArray(taskIds)) {
@@ -45,6 +51,28 @@ export async function POST(request: NextRequest) {
       { error: "taskIds must be an array" },
       { status: 400 }
     );
+  }
+
+  // Validate taskIds are unique non-empty strings
+  const seen = new Set<string>();
+  for (const id of taskIds) {
+    if (typeof id !== "string" || id.trim() === "") {
+      log.warn("POST /api/tasks/reorder - invalid taskId", { id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "taskIds must be non-empty strings" },
+        { status: 400 }
+      );
+    }
+    if (seen.has(id)) {
+      log.warn("POST /api/tasks/reorder - duplicate taskId", { id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "taskIds must be unique" },
+        { status: 400 }
+      );
+    }
+    seen.add(id);
   }
 
   // Accept both READY and IN_PROGRESS (legacy DB value)
