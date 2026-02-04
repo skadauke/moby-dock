@@ -24,6 +24,7 @@ export async function POST() {
   try {
     // Call the file server's gateway ping endpoint
     // This will forward the wake event to the OpenClaw gateway
+    // Add timeout to prevent hanging requests
     const res = await fetch(`${FILE_SERVER_URL}/gateway/ping`, {
       method: "POST",
       headers: {
@@ -34,6 +35,7 @@ export async function POST() {
         text: "Check Ready queue for tasks",
         mode: "now",
       }),
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
     const duration = Date.now() - startTime;

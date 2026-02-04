@@ -180,14 +180,20 @@ app.post('/gateway/ping', authenticate, async (req, res) => {
     const gatewayPort = config.gateway?.port || 3377;
     const gatewayUrl = `http://localhost:${gatewayPort}`;
     
-    // Call the gateway's wake endpoint
+    // Call the gateway's wake endpoint with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     const response = await fetch(`${gatewayUrl}/api/cron/wake`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ text, mode }),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -222,13 +228,19 @@ app.post('/gateway/restart', authenticate, async (req, res) => {
     const gatewayPort = config.gateway?.port || 3377;
     const gatewayUrl = `http://localhost:${gatewayPort}`;
     
-    // Call the gateway's restart endpoint (correct path is /api/restart)
+    // Call the gateway's restart endpoint with timeout (correct path is /api/restart)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     const response = await fetch(`${gatewayUrl}/api/restart`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const errorText = await response.text();

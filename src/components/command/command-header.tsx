@@ -32,6 +32,7 @@ export function CommandHeader({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPinging, setIsPinging] = useState(false);
   const [pingSuccess, setPingSuccess] = useState(false);
+  const [pingError, setPingError] = useState<string | null>(null);
   const log = useLogger();
   
   // Default creator for new tasks (could be enhanced with session info later)
@@ -41,20 +42,25 @@ export function CommandHeader({
   const pingMoby = useCallback(async () => {
     setIsPinging(true);
     setPingSuccess(false);
+    setPingError(null);
     log.info("Ping Moby initiated");
     
     try {
       const res = await fetch("/api/gateway/ping", { method: "POST" });
       if (!res.ok) {
-        throw new Error("Failed to ping Moby");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to ping Moby");
       }
       setPingSuccess(true);
       log.info("Ping Moby succeeded");
       // Reset success indicator after 2 seconds
       setTimeout(() => setPingSuccess(false), 2000);
     } catch (err) {
-      log.error("Ping Moby failed", { error: err instanceof Error ? err.message : "Unknown error" });
-      // Could show error toast here
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      log.error("Ping Moby failed", { error: errorMsg });
+      setPingError(errorMsg);
+      // Clear error after 3 seconds
+      setTimeout(() => setPingError(null), 3000);
     } finally {
       setIsPinging(false);
     }
@@ -161,12 +167,14 @@ export function CommandHeader({
                 className={`h-8 px-3 ${
                   pingSuccess 
                     ? "text-green-400 bg-green-500/10" 
+                    : pingError
+                    ? "text-red-400 bg-red-500/10"
                     : "text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10"
                 }`}
-                title="Ping Moby to check Ready queue"
+                title={pingError || "Ping Moby to check Ready queue"}
               >
                 <Zap className={`h-4 w-4 mr-1.5 ${isPinging ? "animate-pulse" : ""}`} />
-                {pingSuccess ? "Pinged!" : "Ping Moby"}
+                {pingSuccess ? "Pinged!" : pingError ? "Failed" : "Ping Moby"}
               </Button>
               {onRefresh && (
                 <Button

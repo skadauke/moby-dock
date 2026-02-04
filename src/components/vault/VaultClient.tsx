@@ -91,6 +91,7 @@ export function VaultClient() {
   const [error, setError] = useState<string | null>(null);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, FullCredential>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -137,13 +138,20 @@ export function VaultClient() {
     }
 
     try {
+      setActionError(null);
       const res = await fetch(`/api/vault/secrets/${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error("Failed to fetch secret");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to fetch secret");
+      }
       const data = await res.json();
       // Use functional update to avoid stale closure
       setRevealedSecrets(prev => ({ ...prev, [id]: data }));
     } catch (err) {
-      log.error("Failed to reveal secret", { id, error: err instanceof Error ? err.message : "Unknown" });
+      const errorMsg = err instanceof Error ? err.message : "Failed to reveal secret";
+      log.error("Failed to reveal secret", { id, error: errorMsg });
+      setActionError(errorMsg);
+      setTimeout(() => setActionError(null), 3000);
     }
   };
 
@@ -165,10 +173,14 @@ export function VaultClient() {
   // Delete credential
   const deleteCredential = async (id: string) => {
     try {
+      setActionError(null);
       const res = await fetch(`/api/vault/secrets/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete");
+      }
       // Use functional updates to avoid stale closures
       setCredentials(prev => prev.filter((c) => c.id !== id));
       // Clear revealed secret for deleted credential
@@ -180,7 +192,11 @@ export function VaultClient() {
       setDeleteConfirm(null);
       log.info("Credential deleted", { id });
     } catch (err) {
-      log.error("Failed to delete credential", { id, error: err instanceof Error ? err.message : "Unknown" });
+      const errorMsg = err instanceof Error ? err.message : "Failed to delete credential";
+      log.error("Failed to delete credential", { id, error: errorMsg });
+      setActionError(errorMsg);
+      setDeleteConfirm(null);
+      setTimeout(() => setActionError(null), 3000);
     }
   };
 
@@ -257,6 +273,11 @@ export function VaultClient() {
           <Badge variant="secondary" className="ml-2">
             {credentials.length} secrets
           </Badge>
+          {actionError && (
+            <Badge variant="destructive" className="ml-2">
+              {actionError}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button

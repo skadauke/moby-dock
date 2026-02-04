@@ -135,6 +135,24 @@ export async function PATCH(
 
   try {
     const updates = await request.json();
+    
+    // Validate and sanitize updates - prevent overwriting protected fields
+    if (!updates || typeof updates !== "object") {
+      await log.flush();
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    
+    // Remove protected fields that shouldn't be modified
+    const { created, ...allowedUpdates } = updates;
+    if (created) {
+      log.warn("Attempted to modify protected field 'created'", { id, userId: session.user.id });
+    }
+    
+    // Validate used_by is an array if provided
+    if (allowedUpdates.used_by !== undefined && !Array.isArray(allowedUpdates.used_by)) {
+      await log.flush();
+      return NextResponse.json({ error: "used_by must be an array" }, { status: 400 });
+    }
 
     // Read existing secrets
     const res = await fetch(
@@ -166,10 +184,10 @@ export async function PATCH(
       );
     }
 
-    // Update credential
+    // Update credential with sanitized fields
     secrets.credentials[id] = {
       ...secrets.credentials[id],
-      ...updates,
+      ...allowedUpdates,
     };
     secrets._meta.updated = new Date().toISOString().split("T")[0];
 
