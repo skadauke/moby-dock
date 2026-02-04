@@ -368,7 +368,18 @@ export function ProjectSidebar({ selectedProjectId, onSelectProject }: ProjectSi
 
       {/* Create/Edit Project Modal */}
       <Dialog open={isModalOpen} onOpenChange={closeModal}>
-        <DialogContent className="bg-zinc-950 border-zinc-800 text-zinc-100">
+        <DialogContent 
+          className="bg-zinc-950 border-zinc-800 text-zinc-100"
+          onKeyDown={(e) => {
+            // Cmd+Enter or Ctrl+Enter to submit
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              if (projectName.trim() && !isSubmitting) {
+                handleCreateOrUpdate();
+              }
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingProject ? "Edit Project" : "New Project"}

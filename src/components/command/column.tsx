@@ -21,21 +21,13 @@ interface ColumnProps {
 export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFlag, onAddTask }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
-  // Only show prominent blue highlight when column is empty
-  // When cards exist, show subtle border only to avoid visual clutter
-  const isEmpty = tasks.length === 0;
-  const showFullHighlight = isOver && isEmpty;
-  const showSubtleHighlight = isOver && !isEmpty;
-
   return (
     <div 
       ref={setNodeRef}
       className={`flex flex-col h-full min-h-0 bg-zinc-900 rounded-lg border transition-colors ${
-        showFullHighlight 
+        isOver 
           ? "border-blue-500 bg-blue-500/5" 
-          : showSubtleHighlight 
-            ? "border-blue-500/50" 
-            : "border-zinc-800"
+          : "border-zinc-800"
       }`}
     >
       <div className="flex items-center justify-between p-3 border-b border-zinc-800">
