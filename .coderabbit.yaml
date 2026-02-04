@@ -7,14 +7,14 @@ reviews:
   high_level_summary: true
   # Disable docstring coverage check (we don't enforce JSDoc in this project)
   pre_merge_checks:
-    docstring_coverage:
-      enabled: false
+    docstrings:
+      mode: "off"
   auto_review:
     enabled: true
     drafts: false
-    # Skip review when 'skip-review' label is present
-    ignore_labels:
-      - "skip-review"
+    # Review all PRs except those with 'skip-review' label
+    labels:
+      - "!skip-review"
 
   path_instructions:
     - path: "**/*.md"
