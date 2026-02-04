@@ -26,8 +26,10 @@ const SECRETS_PATH = "~/.openclaw/credentials/secrets.json";
 interface RequestBody {
   /** Credential ID to generate test for */
   id: string;
-  /** Whether to save the generated config to the credential */
+  /** Whether to save the generated config to the credential (default: false) */
   save?: boolean;
+  /** Expected version for optimistic locking when saving */
+  expectedVersion?: string;
 }
 
 export async function POST(request: Request) {
@@ -62,12 +64,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
   
-  const { id, save = true } = body;
+  const { id, save = false, expectedVersion } = body;
   
   if (!id || typeof id !== 'string') {
     log.warn("Missing credential ID");
     await log.flush();
     return NextResponse.json({ error: "Missing credential ID" }, { status: 400 });
+  }
+  
+  // Validate save is a boolean (not a truthy string like "false")
+  if (save !== undefined && typeof save !== 'boolean') {
+    log.warn("Invalid save parameter type", { save, type: typeof save });
+    await log.flush();
+    return NextResponse.json(
+      { error: "Invalid save parameter", message: "save must be a boolean" },
+      { status: 400 }
+    );
+  }
+  
+  // Require expectedVersion when saving
+  if (save && !expectedVersion) {
+    log.warn("Missing expectedVersion for save operation");
+    await log.flush();
+    return NextResponse.json(
+      { error: "Missing expectedVersion", message: "expectedVersion required when save=true" },
+      { status: 400 }
+    );
   }
   
   log.info("POST /api/ai/generate-test-config", { 
@@ -77,11 +99,12 @@ export async function POST(request: Request) {
   });
   
   try {
-    // Fetch secrets file
+    // Fetch secrets file (with timeout)
     const res = await fetch(
       `${FILE_SERVER_URL}/files?path=${encodeURIComponent(SECRETS_PATH)}`,
       {
         headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+        signal: AbortSignal.timeout(10000),
       }
     );
     
@@ -120,6 +143,8 @@ export async function POST(request: Request) {
       schema: TestConfigSchema,
       prompt,
       systemPrompt: TEST_CONFIG_SYSTEM_PROMPT,
+      timeoutMs: 30000,
+      maxValidationRetries: 2,
     });
     
     if (!result.success) {
@@ -156,7 +181,14 @@ export async function POST(request: Request) {
       );
     }
     
-    // Log the generated config for troubleshooting (as requested)
+    // Log the generated config for troubleshooting (headers redacted)
+    const redactedHeaders = generatedConfig.headers
+      ? Object.keys(generatedConfig.headers).reduce((acc, key) => {
+          acc[key] = '[REDACTED]';
+          return acc;
+        }, {} as Record<string, string>)
+      : undefined;
+    
     log.info("Generated test config", { 
       id,
       service: credential.service,
@@ -166,8 +198,8 @@ export async function POST(request: Request) {
         url: generatedConfig.url,
         expectStatus: generatedConfig.expectStatus,
         description: generatedConfig.description,
-        // Note: headers logged for troubleshooting but may contain patterns
-        headers: generatedConfig.headers,
+        // Only log header keys, not values (security)
+        headerKeys: generatedConfig.headers ? Object.keys(generatedConfig.headers) : [],
       },
       attempts: result.attempts
     });
@@ -181,8 +213,25 @@ export async function POST(request: Request) {
       expectStatus: generatedConfig.expectStatus,
     };
     
-    // Save if requested
+    // Save if requested (with optimistic locking)
     if (save) {
+      // Check version for optimistic locking
+      if (secrets._meta.updated !== expectedVersion) {
+        log.warn("Version conflict", { 
+          expected: expectedVersion, 
+          actual: secrets._meta.updated 
+        });
+        await log.flush();
+        return NextResponse.json(
+          { 
+            error: "Version conflict",
+            message: "Secrets file was modified. Please refresh and try again.",
+            currentVersion: secrets._meta.updated
+          },
+          { status: 409 }
+        );
+      }
+      
       secrets.credentials[id].test = testConfig;
       secrets._meta.updated = new Date().toISOString();
       
@@ -196,6 +245,7 @@ export async function POST(request: Request) {
           path: SECRETS_PATH,
           content: JSON.stringify(secrets, null, 2),
         }),
+        signal: AbortSignal.timeout(10000),
       });
       
       if (!writeRes.ok) {
@@ -221,6 +271,10 @@ export async function POST(request: Request) {
       notes: generatedConfig.notes,
       saved: save,
       attempts: result.attempts,
+      // AI output should be reviewed before use
+      requiresUserConfirmation: true,
+      // Include version for optimistic locking on subsequent saves
+      version: secrets._meta.updated,
     });
     
   } catch (error) {
