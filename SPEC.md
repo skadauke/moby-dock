@@ -48,6 +48,27 @@ Secure secrets management with visibility into credentials.
 - Add/edit/delete credentials through UI
 - **Expiration warnings** (visual indicator for expiring soon)
 
+#### AI-Assisted Features (Vault)
+
+The Vault includes AI-powered features for credential management:
+
+**API Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ai/status` | GET | Check if AI is configured |
+| `/api/ai/generate-test-script` | POST | Generate a test script for a credential |
+| `/api/ai/generate-rotation-url` | POST | Find rotation URL and instructions |
+
+**Environment Variables Required:**
+- `OPENAI_API_KEY` — OpenAI API key for AI features
+
+**Security Notes:**
+- AI output is marked as `requiresUserConfirmation: true`
+- Test scripts are validated to contain `$VALUE` placeholder
+- Commands are restricted to single-line, safe patterns (no `;`, `&&`, `\n`)
+- Users must explicitly confirm before executing any AI-generated commands
+
 ---
 
 ### 4. Log (Activity Feed)
