@@ -238,7 +238,7 @@ End with:
       model: MODEL,
       input: prompt,
       reasoning: {
-        effort: 'high',
+        effort: 'medium',
       },
       background: true,
     }),
