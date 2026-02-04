@@ -9,8 +9,28 @@ import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { z } from "zod";
 import { executeTest, validateTestUrl } from "@/lib/vault";
 import type { Credential, SecretsFile, TestConfig, TestResult } from "@/lib/vault";
+
+/**
+ * Zod schema for TestConfig validation
+ * Ensures test configs have valid structure before execution
+ */
+const TestConfigSchema = z.object({
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD']),
+  url: z.string().url().startsWith('https://', { message: 'URL must use HTTPS' }),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.string().optional(),
+  expectStatus: z.union([
+    z.number().int().min(100).max(599),
+    z.array(z.number().int().min(100).max(599))
+  ]),
+  expectBodyContains: z.string().optional(),
+});
+
+/** Safe HTTP methods that don't typically cause side effects */
+const SAFE_METHODS = ['GET', 'HEAD'] as const;
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
@@ -23,6 +43,10 @@ interface RequestBody {
   testConfig?: TestConfig;
   /** Whether to save the test result to the credential */
   saveResult?: boolean;
+  /** User confirmation for override configs (required for non-safe methods) */
+  confirmed?: boolean;
+  /** Expected version for optimistic locking when saving */
+  expectedVersion?: string;
 }
 
 /**
@@ -60,12 +84,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
   
-  const { id, testConfig: overrideConfig, saveResult = true } = body;
+  const { id, testConfig: overrideConfig, saveResult = true, confirmed, expectedVersion } = body;
   
   if (!id || typeof id !== 'string') {
     log.warn("Missing credential ID");
     await log.flush();
     return NextResponse.json({ error: "Missing credential ID" }, { status: 400 });
+  }
+  
+  // Validate override config with Zod if provided
+  if (overrideConfig) {
+    const configValidation = TestConfigSchema.safeParse(overrideConfig);
+    if (!configValidation.success) {
+      log.warn("Invalid test config schema", { 
+        issues: configValidation.error.issues 
+      });
+      await log.flush();
+      return NextResponse.json({ 
+        error: "Invalid test configuration",
+        message: "Test config failed schema validation",
+        details: configValidation.error.issues.map(e => ({
+          path: e.path.join('.'),
+          message: e.message
+        }))
+      }, { status: 400 });
+    }
+  }
+  
+  // Require expectedVersion when saving results
+  if (saveResult && !expectedVersion) {
+    log.warn("Missing expectedVersion for save operation");
+    await log.flush();
+    return NextResponse.json(
+      { error: "Missing expectedVersion", message: "expectedVersion required when saveResult=true" },
+      { status: 400 }
+    );
   }
   
   log.info("POST /api/vault/test", { 
@@ -76,11 +129,12 @@ export async function POST(request: Request) {
   });
   
   try {
-    // Fetch secrets file
+    // Fetch secrets file (with timeout)
     const res = await fetch(
       `${FILE_SERVER_URL}/files?path=${encodeURIComponent(SECRETS_PATH)}`,
       {
         headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+        signal: AbortSignal.timeout(10000),
       }
     );
     
@@ -116,10 +170,24 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
+    // Require confirmation for non-safe methods (applies to all configs, not just overrides)
+    const method = testConfig.method;
+    if (!SAFE_METHODS.includes(method as typeof SAFE_METHODS[number]) && !confirmed) {
+      log.info("Confirmation required for unsafe method", { id, method });
+      await log.flush();
+      return NextResponse.json({
+        error: "Confirmation required",
+        message: `Test uses ${method} method which may have side effects. Set confirmed=true to proceed.`,
+        requiresConfirmation: true,
+        method
+      }, { status: 400 });
+    }
+    
     // Validate test config URL
     const urlValidation = validateTestUrl(testConfig.url);
     if (!urlValidation.valid) {
-      log.warn("Invalid test URL", { id, url: testConfig.url, error: urlValidation.error });
+      // Don't log URL - may contain sensitive patterns
+      log.warn("Invalid test URL", { id, error: urlValidation.error });
       await log.flush();
       return NextResponse.json({ 
         error: "Invalid test configuration",
@@ -137,17 +205,15 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    // Log the test config (for troubleshooting, as requested)
+    // Log minimal test info (no URLs/headers - may contain sensitive patterns)
     log.info("Executing test", { 
       id, 
       service: credential.service,
       type: credential.type,
-      testConfig: {
-        method: testConfig.method,
-        url: testConfig.url,
-        expectStatus: testConfig.expectStatus,
-        // Don't log headers as they may contain sensitive patterns
-      }
+      method: testConfig.method,
+      expectStatus: testConfig.expectStatus,
+      hasHeaders: !!testConfig.headers,
+      hasBody: !!testConfig.body,
     });
     
     // Execute test
@@ -160,8 +226,25 @@ export async function POST(request: Request) {
       durationMs: result.durationMs 
     });
     
-    // Save result if requested
+    // Save result if requested (with optimistic locking)
     if (saveResult) {
+      // Check version for optimistic locking
+      if (secrets._meta.updated !== expectedVersion) {
+        log.warn("Version conflict", { 
+          expected: expectedVersion, 
+          actual: secrets._meta.updated 
+        });
+        // Return the test result anyway, but indicate save failed
+        return NextResponse.json({
+          success: true,
+          result,
+          saved: false,
+          versionConflict: true,
+          message: "Test succeeded but result not saved due to version conflict. Please refresh.",
+          currentVersion: secrets._meta.updated
+        });
+      }
+      
       secrets.credentials[id].lastTestResult = result;
       secrets._meta.updated = new Date().toISOString();
       
@@ -175,6 +258,7 @@ export async function POST(request: Request) {
           path: SECRETS_PATH,
           content: JSON.stringify(secrets, null, 2),
         }),
+        signal: AbortSignal.timeout(10000),
       });
       
       if (!writeRes.ok) {
@@ -190,6 +274,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       result,
+      saved: saveResult,
+      version: secrets._meta.updated,
     });
     
   } catch (error) {
