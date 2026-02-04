@@ -180,7 +180,11 @@ export async function POST(request: Request) {
     // Validate with Zod schema
     const validation = CredentialInputSchema.safeParse(body);
     if (!validation.success) {
-      log.warn("Credential validation failed", { issues: validation.error.issues });
+      // Log only field names and codes - not raw issues which may contain secret values
+      log.warn("Credential validation failed", { 
+        failedFields: validation.error.issues.map(i => i.path.join('.')),
+        codes: validation.error.issues.map(i => i.code)
+      });
       await log.flush();
       return NextResponse.json({ 
         error: "Invalid credential data",

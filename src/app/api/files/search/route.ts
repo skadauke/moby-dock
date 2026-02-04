@@ -121,7 +121,8 @@ export async function GET(request: NextRequest) {
   const log = new Logger({ source: "api/files/search" });
   const query = request.nextUrl.searchParams.get("q");
 
-  log.info("GET /api/files/search", { query });
+  // Don't log raw query - users may search for secrets
+  log.info("GET /api/files/search", { queryLength: query?.length });
 
   // Check authentication
   const session = await auth.api.getSession({ headers: await headers() });
@@ -132,7 +133,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!query || query.length < 2) {
-    log.warn("Search query too short", { query });
+    log.warn("Search query too short", { queryLength: query?.length });
     await log.flush();
     return NextResponse.json({ error: "Query must be at least 2 characters" }, { status: 400 });
   }
@@ -162,7 +163,7 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     log.info("[FileServer] search complete", {
-      query,
+      queryLength: query.length,
       totalFiles: allFiles.length,
       searchedFiles: filesToSearch.length,
       resultCount: allResults.length,
@@ -178,7 +179,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const duration = Date.now() - startTime;
     log.error("[FileServer] search failed", {
-      query,
+      queryLength: query.length,
       error: err instanceof Error ? err.message : String(err),
       duration,
     });

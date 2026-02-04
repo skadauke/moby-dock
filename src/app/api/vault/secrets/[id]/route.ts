@@ -3,6 +3,7 @@ import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { z } from "zod";
+import { isSafeObjectKey } from "@/lib/path-validation";
 import type { SecretsFile } from "@/lib/vault";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
@@ -45,6 +46,13 @@ export async function GET(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
+  
+  // Prototype pollution protection
+  if (!isSafeObjectKey(id)) {
+    log.warn("Dangerous credential ID in URL", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
+  }
   
   // Auth check - critical for secret reveal
   const session = await auth.api.getSession({ headers: await headers() });
@@ -126,6 +134,13 @@ export async function PATCH(
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
   
+  // Prototype pollution protection
+  if (!isSafeObjectKey(id)) {
+    log.warn("Dangerous credential ID in URL", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
+  }
+  
   // Auth check
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
@@ -144,7 +159,12 @@ export async function PATCH(
     // Validate with Zod schema
     const validation = CredentialUpdateSchema.safeParse(body);
     if (!validation.success) {
-      log.warn("PATCH validation failed", { id, issues: validation.error.issues });
+      // Log only field names and codes - not raw issues which may contain secret values
+      log.warn("PATCH validation failed", { 
+        id, 
+        failedFields: validation.error.issues.map(i => i.path.join('.')),
+        codes: validation.error.issues.map(i => i.code)
+      });
       await log.flush();
       return NextResponse.json({ 
         error: "Invalid update data",
@@ -281,6 +301,13 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const log = new Logger({ source: "api/vault/secrets/[id]" });
+  
+  // Prototype pollution protection
+  if (!isSafeObjectKey(id)) {
+    log.warn("Dangerous credential ID in URL", { id });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid credential ID" }, { status: 400 });
+  }
   
   // Auth check
   const session = await auth.api.getSession({ headers: await headers() });
