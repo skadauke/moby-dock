@@ -77,21 +77,66 @@ export async function GET() {
  * Add a new quick access item
  */
 export async function POST(request: NextRequest) {
+  const log = new Logger({ source: 'api/quick-access' });
+  
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
+    log.warn('Unauthorized quick-access POST');
+    await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const startTime = Date.now();
+
   try {
     const body = await request.json();
-    const { filePath, fileName, description } = body;
-
-    if (!filePath || !fileName) {
+    
+    // Validate body is an object
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      log.warn('Invalid request body type', { userId: session.user.id });
+      await log.flush();
       return NextResponse.json(
-        { error: "filePath and fileName are required" },
+        { error: "Invalid request body" },
         { status: 400 }
       );
     }
+    
+    const { filePath, fileName, description } = body;
+
+    // Type validation
+    if (!filePath || typeof filePath !== 'string') {
+      log.warn('Invalid filePath', { userId: session.user.id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "filePath is required and must be a string" },
+        { status: 400 }
+      );
+    }
+    
+    if (!fileName || typeof fileName !== 'string') {
+      log.warn('Invalid fileName', { userId: session.user.id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "fileName is required and must be a string" },
+        { status: 400 }
+      );
+    }
+    
+    if (description !== undefined && typeof description !== 'string') {
+      log.warn('Invalid description type', { userId: session.user.id });
+      await log.flush();
+      return NextResponse.json(
+        { error: "description must be a string if provided" },
+        { status: 400 }
+      );
+    }
+
+    log.info('POST /api/quick-access', { 
+      userId: session.user.id,
+      fileName,
+      // Don't log full filePath - may contain sensitive info
+      filePathLength: filePath.length
+    });
 
     const result = await addQuickAccessItem(
       session.user.id,
@@ -100,12 +145,28 @@ export async function POST(request: NextRequest) {
       description
     );
 
+    const duration = Date.now() - startTime;
+
     if (!result.ok) {
+      log.error('Failed to add quick-access item', { 
+        userId: session.user.id, 
+        error: result.error.message,
+        duration 
+      });
+      await log.flush();
       return NextResponse.json({ error: result.error.message }, { status: 400 });
     }
 
+    log.info('Quick-access item added', { 
+      userId: session.user.id, 
+      itemId: result.data.id,
+      duration 
+    });
+    await log.flush();
     return NextResponse.json(result.data);
   } catch {
+    log.warn('Invalid JSON in request body', { userId: session.user.id });
+    await log.flush();
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 }
