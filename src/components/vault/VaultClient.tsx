@@ -35,7 +35,6 @@ import {
   Copy,
   Plus,
   Trash2,
-  Edit,
   AlertTriangle,
   Check,
   RefreshCw,
@@ -45,7 +44,15 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  Circle,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface TestResult {
   success: boolean;
@@ -112,6 +119,7 @@ export function VaultClient() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [testingCredential, setTestingCredential] = useState<string | null>(null);
   const [generatingTest, setGeneratingTest] = useState<string | null>(null);
+  const [testError, setTestError] = useState<{ id: string; message: string } | null>(null);
   const log = useLogger();
 
   // Fetch credentials
@@ -221,7 +229,7 @@ export function VaultClient() {
   const testCredential = async (id: string) => {
     try {
       setTestingCredential(id);
-      setActionError(null);
+      setTestError(null);
       const res = await fetch("/api/vault/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -247,8 +255,8 @@ export function VaultClient() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Test failed";
       log.error("Credential test failed", { id, error: errorMsg });
-      setActionError(errorMsg);
-      setTimeout(() => setActionError(null), 5000);
+      setTestError({ id, message: errorMsg });
+      setTimeout(() => setTestError(null), 5000);
     } finally {
       setTestingCredential(null);
     }
@@ -258,7 +266,7 @@ export function VaultClient() {
   const generateTestConfig = async (id: string) => {
     try {
       setGeneratingTest(id);
-      setActionError(null);
+      setTestError(null);
       const res = await fetch("/api/ai/generate-test-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -281,8 +289,8 @@ export function VaultClient() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Failed to generate test";
       log.error("Failed to generate test config", { id, error: errorMsg });
-      setActionError(errorMsg);
-      setTimeout(() => setActionError(null), 5000);
+      setTestError({ id, message: errorMsg });
+      setTimeout(() => setTestError(null), 5000);
     } finally {
       setGeneratingTest(null);
     }
@@ -424,23 +432,6 @@ export function VaultClient() {
                       >
                         {cred.type}
                       </Badge>
-                      {/* Test status badge */}
-                      {cred.lastTestResult && (
-                        <Badge 
-                          className={`text-xs ${
-                            cred.lastTestResult.success 
-                              ? "bg-green-500/20 text-green-300 border-green-500/50" 
-                              : "bg-red-500/20 text-red-300 border-red-500/50"
-                          }`}
-                        >
-                          {cred.lastTestResult.success ? (
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                          ) : (
-                            <XCircle className="h-3 w-3 mr-1" />
-                          )}
-                          {cred.lastTestResult.success ? "Valid" : "Invalid"}
-                        </Badge>
-                      )}
                       {expired && (
                         <Badge variant="destructive" className="text-xs">
                           Expired
@@ -519,35 +510,69 @@ export function VaultClient() {
                         </>
                       )}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => testCredential(cred.id)}
-                      disabled={testingCredential === cred.id || generatingTest === cred.id}
-                      className="h-7 text-xs"
-                    >
-                      {testingCredential === cred.id ? (
-                        <>
-                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          Testing...
-                        </>
-                      ) : generatingTest === cred.id ? (
-                        <>
-                          <Sparkles className="h-3 w-3 mr-1 animate-pulse" />
-                          Generating...
-                        </>
-                      ) : cred.hasTest ? (
-                        <>
-                          <Play className="h-3 w-3 mr-1" />
-                          Test
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          Test
-                        </>
-                      )}
-                    </Button>
+                    
+                    {/* Test button - icon only with tooltip */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => testCredential(cred.id)}
+                            disabled={testingCredential === cred.id || generatingTest === cred.id}
+                            className={cn(
+                              "h-7 w-7 transition-colors",
+                              cred.lastTestResult?.success && "text-green-400 hover:text-green-300",
+                              cred.lastTestResult && !cred.lastTestResult.success && "text-red-400 hover:text-red-300",
+                              !cred.lastTestResult && !cred.hasTest && "text-zinc-400 hover:text-amber-300"
+                            )}
+                          >
+                            {testingCredential === cred.id || generatingTest === cred.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : cred.lastTestResult?.success ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : cred.lastTestResult ? (
+                              <XCircle className="h-4 w-4" />
+                            ) : cred.hasTest ? (
+                              <Play className="h-4 w-4" />
+                            ) : (
+                              <Sparkles className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="bg-zinc-800 border-zinc-700">
+                          {testingCredential === cred.id ? (
+                            <p>Testing credential...</p>
+                          ) : generatingTest === cred.id ? (
+                            <p>AI generating test config...</p>
+                          ) : cred.lastTestResult?.success ? (
+                            <p>Valid • Click to re-test</p>
+                          ) : cred.lastTestResult ? (
+                            <p>Invalid • Click to re-test</p>
+                          ) : cred.hasTest ? (
+                            <p>Run test</p>
+                          ) : (
+                            <p>Generate test with AI</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    {/* Inline test status/error */}
+                    {testError?.id === cred.id && (
+                      <span className="text-xs text-red-400 animate-in fade-in slide-in-from-left-2">
+                        {testError.message}
+                      </span>
+                    )}
+                    {cred.lastTestResult && !testError?.id && (
+                      <span className={cn(
+                        "text-xs transition-opacity",
+                        cred.lastTestResult.success ? "text-green-400/70" : "text-red-400/70"
+                      )}>
+                        {cred.lastTestResult.success ? "Valid" : cred.lastTestResult.message}
+                      </span>
+                    )}
+
                     <div className="flex-1" />
                     <Button
                       variant="ghost"
@@ -559,22 +584,10 @@ export function VaultClient() {
                     </Button>
                   </div>
 
-                  {/* Dates and test info */}
-                  <div className="flex flex-col gap-1 mt-2 text-xs text-zinc-600">
-                    <div className="flex items-center justify-between">
-                      <span>Created: {cred.created}</span>
-                      {cred.expires && <span>Expires: {cred.expires}</span>}
-                    </div>
-                    {cred.lastTestResult && (
-                      <div className="flex items-center justify-between">
-                        <span>
-                          Last test: {new Date(cred.lastTestResult.testedAt).toLocaleDateString()}
-                        </span>
-                        <span className={cred.lastTestResult.success ? "text-green-500" : "text-red-500"}>
-                          {cred.lastTestResult.message}
-                        </span>
-                      </div>
-                    )}
+                  {/* Dates */}
+                  <div className="flex items-center justify-between mt-2 text-xs text-zinc-600">
+                    <span>Created: {cred.created}</span>
+                    {cred.expires && <span>Expires: {cred.expires}</span>}
                   </div>
                 </CardContent>
               </Card>
