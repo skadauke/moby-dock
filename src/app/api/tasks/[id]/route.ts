@@ -11,6 +11,12 @@ import { Logger } from "next-axiom";
 import { checkApiAuth } from "@/lib/api-auth";
 import { getTaskById, updateTask, deleteTask } from "@/lib/api-store";
 
+/** Allowed fields for PATCH updates (whitelist) */
+const ALLOWED_UPDATE_FIELDS = [
+  'title', 'description', 'status', 'priority', 'flagged',
+  'dueDate', 'projectId', 'details', 'position'
+] as const;
+
 interface Params {
   params: Promise<{ id: string }>;
 }
@@ -89,15 +95,40 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Log what fields are being updated (without values for privacy)
-  const updatedFields = Object.keys(body);
+  // Filter to only allowed fields (whitelist)
+  const providedFields = Object.keys(body);
+  const filteredUpdate: Record<string, unknown> = {};
+  const allowedFieldsSet = new Set<string>(ALLOWED_UPDATE_FIELDS);
+  
+  for (const field of providedFields) {
+    if (allowedFieldsSet.has(field)) {
+      filteredUpdate[field] = body[field];
+    }
+  }
+  
+  const updatedFields = Object.keys(filteredUpdate);
+  const rejectedFields = providedFields.filter(f => !allowedFieldsSet.has(f));
+  
+  if (rejectedFields.length > 0) {
+    log.warn("PATCH /api/tasks/[id] - rejected fields", { 
+      taskId: id, 
+      rejectedFields 
+    });
+  }
+  
+  if (updatedFields.length === 0) {
+    log.warn("PATCH /api/tasks/[id] - no valid fields", { taskId: id });
+    await log.flush();
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+  }
+
   log.info("PATCH /api/tasks/[id]", {
     taskId: id,
     updatedFields,
   });
 
   const startTime = Date.now();
-  const result = await updateTask(id, body);
+  const result = await updateTask(id, filteredUpdate);
   const duration = Date.now() - startTime;
 
   if (!result.ok) {
