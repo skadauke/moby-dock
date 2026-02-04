@@ -109,19 +109,6 @@ export async function POST(request: Request) {
         }))
       }, { status: 400 });
     }
-    
-    // Require confirmation for override configs with non-safe methods
-    const method = overrideConfig.method;
-    if (!SAFE_METHODS.includes(method as typeof SAFE_METHODS[number]) && !confirmed) {
-      log.info("Confirmation required for unsafe method", { method });
-      await log.flush();
-      return NextResponse.json({
-        error: "Confirmation required",
-        message: `Test uses ${method} method which may have side effects. Set confirmed=true to proceed.`,
-        requiresConfirmation: true,
-        method
-      }, { status: 400 });
-    }
   }
   
   // Require expectedVersion when saving results
@@ -180,6 +167,19 @@ export async function POST(request: Request) {
         error: "No test configuration",
         message: "This credential has no test configured. Generate one using AI.",
         needsGeneration: true
+      }, { status: 400 });
+    }
+    
+    // Require confirmation for non-safe methods (applies to all configs, not just overrides)
+    const method = testConfig.method;
+    if (!SAFE_METHODS.includes(method as typeof SAFE_METHODS[number]) && !confirmed) {
+      log.info("Confirmation required for unsafe method", { id, method });
+      await log.flush();
+      return NextResponse.json({
+        error: "Confirmation required",
+        message: `Test uses ${method} method which may have side effects. Set confirmed=true to proceed.`,
+        requiresConfirmation: true,
+        method
       }, { status: 400 });
     }
     
