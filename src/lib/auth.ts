@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { createAuthMiddleware, APIError } from "better-auth/api";
+import { Logger } from "next-axiom";
 
 // Allowed GitHub usernames (for private access)
 const ALLOWED_USERS = ["skadauke"];
@@ -73,26 +74,49 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      // Intercept OAuth callback to check allowed users
-      if (ctx.path === "/callback/github") {
-        // The user info is in the OAuth state/profile after callback
-        // We'll check in the after hook once we have the user
+      const log = new Logger({ source: "auth" });
+      
+      // Log auth attempts
+      if (ctx.path.includes("/sign-in") || ctx.path.includes("/sign-out") || ctx.path.includes("/callback")) {
+        log.info("Auth request", { 
+          path: ctx.path,
+          method: ctx.request?.method 
+        });
+        await log.flush();
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
+      const log = new Logger({ source: "auth" });
+      
       // After sign-in, check if user is allowed
       if (ctx.path.startsWith("/callback/github")) {
         const session = ctx.context.newSession;
         if (session?.user) {
           const username = (session.user as { username?: string }).username;
           if (!username || !ALLOWED_USERS.includes(username)) {
-            // User not allowed - we need to sign them out
-            // and return an error
+            // Log unauthorized access attempt
+            log.warn("Auth denied - user not in allowlist", { 
+              username,
+              userId: session.user.id 
+            });
+            await log.flush();
             throw new APIError("FORBIDDEN", {
               message: "Access denied. Your GitHub account is not authorized.",
             });
           }
+          // Log successful sign-in
+          log.info("Auth success - user signed in", { 
+            username,
+            userId: session.user.id 
+          });
+          await log.flush();
         }
+      }
+      
+      // Log sign-out
+      if (ctx.path.includes("/sign-out")) {
+        log.info("Auth sign-out");
+        await log.flush();
       }
     }),
   },
