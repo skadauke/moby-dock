@@ -8,6 +8,9 @@
 import { homedir } from 'os';
 import { resolve, normalize } from 'path';
 
+/** Home directory - use HOME_DIR env var (set on Vercel) or OS homedir */
+const HOME = process.env.HOME_DIR || homedir();
+
 /** Allowed base directories for file operations */
 const ALLOWED_BASE_DIRS = [
   '~/clawd',
@@ -23,10 +26,10 @@ const DANGEROUS_SEGMENTS = ['..', './', '../'];
  */
 function expandTilde(path: string): string {
   if (path.startsWith('~/')) {
-    return resolve(homedir(), path.slice(2));
+    return resolve(HOME, path.slice(2));
   }
   if (path === '~') {
-    return homedir();
+    return HOME;
   }
   return path;
 }
@@ -54,7 +57,7 @@ export function validateFilePath(path: string): { valid: boolean; error?: string
   const normalized = normalize(expanded);
 
   // Check if path is under an allowed base directory
-  const home = homedir();
+  const home = HOME;
   const allowedPaths = ALLOWED_BASE_DIRS.map(dir => expandTilde(dir));
   
   const isAllowed = allowedPaths.some(allowedPath => {
