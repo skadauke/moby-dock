@@ -22,10 +22,10 @@ export function TerminalPanel() {
 
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
-  // Keyboard shortcut: Cmd+`
+  // Keyboard shortcut: Ctrl+`
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === "`") {
+      if (e.ctrlKey && e.key === "`") {
         e.preventDefault();
         toggle();
       }
