@@ -9,6 +9,10 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs').promises;
 const path = require('path');
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const pty = require('node-pty');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -263,7 +267,107 @@ app.post('/gateway/restart', authenticate, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// ─── WebSocket Terminal ─────────────────────────────────────────────
+const MAX_TERMINAL_SESSIONS = 5;
+const terminalSessions = new Map(); // id -> { pty, ws }
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url, `http://${request.headers.host}`);
+
+  if (url.pathname !== '/terminal') {
+    socket.destroy();
+    return;
+  }
+
+  // Auth check
+  const token = url.searchParams.get('token');
+  if (token !== AUTH_TOKEN) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
+
+wss.on('connection', (ws, request) => {
+  if (terminalSessions.size >= MAX_TERMINAL_SESSIONS) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Too many sessions' }));
+    ws.close();
+    return;
+  }
+
+  const url = new URL(request.url, `http://${request.headers.host}`);
+  const cols = parseInt(url.searchParams.get('cols')) || 80;
+  const rows = parseInt(url.searchParams.get('rows')) || 24;
+  const sessionId = crypto.randomUUID();
+
+  let shell;
+  try {
+    shell = pty.spawn('zsh', [], {
+      name: 'xterm-256color',
+      cols,
+      rows,
+      cwd: process.env.HOME || '/Users/skadauke',
+      env: { ...process.env, TERM: 'xterm-256color' },
+    });
+  } catch (err) {
+    console.error('Failed to spawn PTY:', err);
+    ws.send(JSON.stringify({ type: 'error', error: 'Failed to spawn terminal' }));
+    ws.close();
+    return;
+  }
+
+  terminalSessions.set(sessionId, { pty: shell, ws });
+  console.log(`Terminal session ${sessionId} started (${terminalSessions.size} active)`);
+
+  ws.send(JSON.stringify({ type: 'connected', id: sessionId }));
+
+  // PTY → WebSocket
+  shell.onData((data) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'data', data }));
+    }
+  });
+
+  shell.onExit(({ exitCode }) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'exit', code: exitCode }));
+    }
+    cleanup();
+  });
+
+  // WebSocket → PTY
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'data' && typeof msg.data === 'string') {
+        shell.write(msg.data);
+      } else if (msg.type === 'resize' && msg.cols && msg.rows) {
+        shell.resize(Math.max(1, msg.cols), Math.max(1, msg.rows));
+      }
+    } catch {
+      // ignore malformed messages
+    }
+  });
+
+  function cleanup() {
+    terminalSessions.delete(sessionId);
+    console.log(`Terminal session ${sessionId} ended (${terminalSessions.size} active)`);
+    try { shell.kill(); } catch {}
+    if (ws.readyState === ws.OPEN) ws.close();
+  }
+
+  ws.on('close', cleanup);
+  ws.on('error', cleanup);
+});
+
+server.listen(PORT, () => {
   console.log(`File server running on port ${PORT}`);
   console.log('Allowed paths:', ALLOWED_PATHS);
 });
