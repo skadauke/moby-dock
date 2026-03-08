@@ -817,10 +817,12 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
                 {media.map((m, i) => (
                   <div key={i} className="mt-2">
                     {m.type === "audio" && (
-                      <audio controls preload="metadata" className="w-full max-w-sm">
-                        <source src={getMediaUrl(m.path)} type={m.mimeType} />
-                        Your browser does not support audio playback.
-                      </audio>
+                      <div className="min-w-[280px]">
+                        <audio controls preload="metadata" className="w-full" style={{ colorScheme: "dark" }}>
+                          <source src={getMediaUrl(m.path)} type={m.mimeType} />
+                          Your browser does not support audio playback.
+                        </audio>
+                      </div>
                     )}
                     {m.type === "image" && (
                       <img
