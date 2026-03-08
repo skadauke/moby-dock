@@ -102,18 +102,30 @@ export async function POST() {
       taskCount: readyTasks.length,
     });
 
-    // Move notified tasks from READY to IN_PROGRESS
+    // Move notified tasks from READY to IN_PROGRESS with correct positions
+    const existingInProgress = result.data
+      .filter((t) => t.status === "IN_PROGRESS")
+      .map((t) => t.position);
+    const basePosition = existingInProgress.length > 0
+      ? Math.max(...existingInProgress)
+      : -1;
+
     const moveResults = await Promise.allSettled(
-      readyTasks.map((t) =>
-        updateTask(t.id, { status: "IN_PROGRESS" })
+      readyTasks.map((t, index) =>
+        updateTask(t.id, {
+          status: "IN_PROGRESS",
+          position: basePosition + index + 1,
+        })
       )
     );
     const movedCount = moveResults.filter(
       (r) => r.status === "fulfilled" && r.value.ok
     ).length;
+    const failedCount = readyTasks.length - movedCount;
     log.info("[Gateway] moved tasks to IN_PROGRESS", {
       attempted: readyTasks.length,
       moved: movedCount,
+      failed: failedCount,
     });
 
     await log.flush();
@@ -123,6 +135,7 @@ export async function POST() {
       notified: true,
       taskCount: readyTasks.length,
       movedToInProgress: movedCount,
+      ...(failedCount > 0 && { failedToMove: failedCount }),
     });
   } catch (error) {
     log.error("[Gateway] notify error", {

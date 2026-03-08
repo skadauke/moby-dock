@@ -32,8 +32,14 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
         if (res.ok) {
           const data: Task[] = await res.json();
           // Only update if data actually changed (compare by JSON)
-          const currentJson = JSON.stringify(tasksRef.current.map(t => t.id + t.status + t.position + t.title + t.needsReview).sort());
-          const newJson = JSON.stringify(data.map(t => t.id + t.status + t.position + t.title + t.needsReview).sort());
+          const fingerprint = (tasks: Task[]) =>
+            JSON.stringify(
+              tasks
+                .map((t) => [t.id, new Date(t.updatedAt).toISOString()])
+                .sort(([a], [b]) => a.localeCompare(b))
+            );
+          const currentJson = fingerprint(tasksRef.current);
+          const newJson = fingerprint(data);
           if (currentJson !== newJson) {
             setTasks(data);
           }
