@@ -98,6 +98,26 @@ export const TEST_PRESETS: TestPreset[] = [
       expectStatus: 200,
     },
   },
+  {
+    label: 'Axiom',
+    keys: ['axiom'],
+    test: {
+      method: 'GET',
+      url: 'https://api.axiom.co/v2/datasets',
+      headers: { Authorization: 'Bearer $VALUE' },
+      expectStatus: 200,
+    },
+  },
+  {
+    label: 'Supabase Service Role',
+    keys: ['supabase_service'],
+    test: {
+      method: 'GET',
+      url: 'https://agvikulyzaqawdhcuajy.supabase.co/rest/v1/',
+      headers: { apikey: '$VALUE', Authorization: 'Bearer $VALUE' },
+      expectStatus: 200,
+    },
+  },
 ];
 
 /**

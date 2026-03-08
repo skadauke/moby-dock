@@ -6,7 +6,7 @@
 
 import type { VaultItemType } from './types';
 
-export type FieldType = 'text' | 'secret' | 'date' | 'textarea' | 'select' | 'tags';
+export type FieldType = 'text' | 'secret' | 'date' | 'textarea' | 'select' | 'tags' | 'country';
 export type Category = 'secrets' | 'personal';
 
 export interface FieldSchema {
@@ -16,6 +16,8 @@ export interface FieldSchema {
   required?: boolean;
   options?: string[];
   placeholder?: string;
+  description?: string;
+  validation?: 'email' | 'phone';
 }
 
 export interface TypeSchema {
@@ -39,7 +41,7 @@ export const CREDENTIAL_TYPES: Record<VaultItemType, TypeSchema> = {
     testable: true,
     fields: [
       { key: 'value', label: 'API Key', type: 'secret', required: true },
-      { key: 'service', label: 'Service', type: 'text', required: true, placeholder: 'e.g. OpenAI' },
+      { key: 'service', label: 'Service', type: 'text', placeholder: 'e.g. OpenAI', description: 'Used for matching test presets and organizing credentials' },
       { key: 'scope', label: 'Scope', type: 'text', placeholder: 'e.g. read:models' },
       { key: 'expires', label: 'Expires', type: 'date' },
       { key: 'notes', label: 'Notes', type: 'textarea' },
@@ -58,7 +60,7 @@ export const CREDENTIAL_TYPES: Record<VaultItemType, TypeSchema> = {
       { key: 'refreshToken', label: 'Refresh Token', type: 'secret' },
       { key: 'accessToken', label: 'Access Token', type: 'secret' },
       { key: 'tokenUrl', label: 'Token URL', type: 'text', placeholder: 'https://…/oauth/token' },
-      { key: 'service', label: 'Service', type: 'text', required: true, placeholder: 'e.g. GitHub OAuth' },
+      { key: 'service', label: 'Service', type: 'text', placeholder: 'e.g. GitHub OAuth', description: 'Used for matching test presets and organizing credentials' },
       { key: 'scope', label: 'Scope', type: 'text' },
       { key: 'expires', label: 'Expires', type: 'date' },
       { key: 'notes', label: 'Notes', type: 'textarea' },
@@ -91,7 +93,7 @@ export const CREDENTIAL_TYPES: Record<VaultItemType, TypeSchema> = {
       { key: 'url', label: 'URL', type: 'text', placeholder: 'https://…' },
       { key: 'service', label: 'Service', type: 'text', required: true },
       { key: 'notes', label: 'Notes', type: 'textarea' },
-      { key: 'totpSecret', label: 'TOTP Secret', type: 'secret' },
+
     ],
   },
 
@@ -105,15 +107,15 @@ export const CREDENTIAL_TYPES: Record<VaultItemType, TypeSchema> = {
     fields: [
       { key: 'firstName', label: 'First Name', type: 'text', required: true },
       { key: 'lastName', label: 'Last Name', type: 'text', required: true },
-      { key: 'email', label: 'Email', type: 'text', placeholder: 'user@example.com' },
-      { key: 'phone', label: 'Phone', type: 'text' },
+      { key: 'email', label: 'Email', type: 'text', placeholder: 'user@example.com', validation: 'email' },
+      { key: 'phone', label: 'Phone', type: 'text', placeholder: '+1 (555) 123-4567', validation: 'phone' },
       { key: 'birthday', label: 'Birthday', type: 'date' },
       { key: 'street', label: 'Street', type: 'text' },
       { key: 'apartment', label: 'Apartment', type: 'text' },
       { key: 'city', label: 'City', type: 'text' },
       { key: 'state', label: 'State', type: 'text' },
       { key: 'zip', label: 'ZIP', type: 'text' },
-      { key: 'country', label: 'Country', type: 'text' },
+      { key: 'country', label: 'Country', type: 'country' },
     ],
   },
 
@@ -141,7 +143,7 @@ export const CREDENTIAL_TYPES: Record<VaultItemType, TypeSchema> = {
       { key: 'bankName', label: 'Bank Name', type: 'text', required: true },
       { key: 'routingNumber', label: 'Routing Number', type: 'secret', required: true },
       { key: 'accountNumber', label: 'Account Number', type: 'secret', required: true },
-      { key: 'accountType', label: 'Account Type', type: 'select', options: ['checking', 'savings'] },
+      { key: 'accountType', label: 'Account Type', type: 'select', options: ['Checking', 'Savings', 'Credit', 'Investment', 'Other'] },
       { key: 'notes', label: 'Notes', type: 'textarea' },
     ],
   },
@@ -165,7 +167,7 @@ export const CREDENTIAL_TYPES: Record<VaultItemType, TypeSchema> = {
     fields: [
       { key: 'fullName', label: 'Full Name', type: 'text', required: true },
       { key: 'number', label: 'Passport Number', type: 'secret', required: true },
-      { key: 'country', label: 'Country', type: 'text', required: true },
+      { key: 'country', label: 'Country', type: 'country', required: true },
       { key: 'issueDate', label: 'Issue Date', type: 'date' },
       { key: 'expiryDate', label: 'Expiry Date', type: 'date' },
       { key: 'notes', label: 'Notes', type: 'textarea' },
