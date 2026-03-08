@@ -1,5 +1,5 @@
-import { SkillsLayout } from "@/components/skills";
+import { SkillsClient } from "@/components/skills";
 
 export default function SkillsPage() {
-  return <SkillsLayout />;
+  return <SkillsClient />;
 }
