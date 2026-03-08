@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { X, FileText, Code, Save, Loader2, FolderOpen, ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ export function SkillDetail({ skill, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [dirContents, setDirContents] = useState<Map<string, FileInfo[]>>(new Map());
+  const openFileRequestId = useRef(0);
 
   const isReadOnly = skill.source === "builtin";
 
@@ -92,18 +93,24 @@ export function SkillDetail({ skill, onClose }: Props) {
   };
 
   const openFile = async (filePath: string) => {
+    const requestId = ++openFileRequestId.current;
     setSelectedFile(filePath);
     setFileLoading(true);
     setIsDirty(false);
     try {
       const data = await readFile(filePath);
+      // Ignore stale responses if user clicked a different file
+      if (requestId !== openFileRequestId.current) return;
       setFileContent(data.content);
       setEditedContent(data.content);
     } catch {
+      if (requestId !== openFileRequestId.current) return;
       setFileContent("// Failed to load file");
       setEditedContent("// Failed to load file");
     } finally {
-      setFileLoading(false);
+      if (requestId === openFileRequestId.current) {
+        setFileLoading(false);
+      }
     }
   };
 
@@ -202,7 +209,7 @@ export function SkillDetail({ skill, onClose }: Props) {
             <p className="text-sm text-zinc-500 truncate">{skill.description}</p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} aria-label="Close skill details">
           <X className="h-4 w-4" />
         </Button>
       </div>

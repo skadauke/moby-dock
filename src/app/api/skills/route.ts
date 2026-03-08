@@ -57,9 +57,10 @@ async function fileServerFetch<T>(path: string): Promise<T> {
   return res.json();
 }
 
+import matter from "gray-matter";
+
 /**
- * Parse YAML frontmatter from SKILL.md content.
- * Simple parser — handles the common fields without a full YAML library.
+ * Parse YAML frontmatter from SKILL.md content using gray-matter.
  */
 function parseFrontmatter(content: string): {
   name?: string;
@@ -67,33 +68,28 @@ function parseFrontmatter(content: string): {
   emoji?: string;
   requires?: string[];
 } {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!match) return {};
+  try {
+    const { data } = matter(content);
+    const result: { name?: string; description?: string; emoji?: string; requires?: string[] } = {};
 
-  const yaml = match[1];
-  const result: { name?: string; description?: string; emoji?: string; requires?: string[] } = {};
+    if (data.name) result.name = String(data.name);
+    if (data.description) result.description = String(data.description);
 
-  // Extract simple top-level fields
-  const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-  if (nameMatch) result.name = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+    // Extract emoji from metadata.openclaw.emoji
+    const emoji = data.metadata?.openclaw?.emoji;
+    if (emoji) result.emoji = String(emoji);
 
-  const descMatch = yaml.match(/^description:\s*(.+)$/m);
-  if (descMatch) result.description = descMatch[1].trim().replace(/^["']|["']$/g, "");
+    // Extract requires.bins (can be array or nested)
+    const bins = data.metadata?.openclaw?.requires?.bins
+      ?? data.metadata?.openclaw?.requires?.anyBins;
+    if (Array.isArray(bins)) {
+      result.requires = bins.map(String);
+    }
 
-  // Extract emoji from metadata.openclaw.emoji
-  const emojiMatch = yaml.match(/emoji:\s*["']?([^\n"']+)["']?/);
-  if (emojiMatch) result.emoji = emojiMatch[1].trim();
-
-  // Extract requires.bins
-  const binsMatch = yaml.match(/bins:\s*\[([^\]]*)\]/);
-  if (binsMatch) {
-    result.requires = binsMatch[1]
-      .split(",")
-      .map((b) => b.trim().replace(/^["']|["']$/g, ""))
-      .filter(Boolean);
+    return result;
+  } catch {
+    return {};
   }
-
-  return result;
 }
 
 async function listSkillsFromDir(
@@ -145,8 +141,11 @@ async function listSkillsFromDir(
     }
 
     return skills;
-  } catch {
-    return [];
+  } catch (err) {
+    // Don't swallow file server errors — let caller handle them
+    throw new Error(
+      `Failed to list ${source} skills from ${dir}: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
   }
 }
 
@@ -162,20 +161,46 @@ export async function GET() {
   }
 
   try {
-    const [customSkills, builtinSkills] = await Promise.all([
+    const results = await Promise.allSettled([
       listSkillsFromDir(CUSTOM_SKILLS_DIR, "custom"),
       listSkillsFromDir(BUILTIN_SKILLS_DIR, "builtin"),
     ]);
+
+    const customSkills = results[0].status === "fulfilled" ? results[0].value : [];
+    const builtinSkills = results[1].status === "fulfilled" ? results[1].value : [];
+    const errors: string[] = [];
+
+    if (results[0].status === "rejected") {
+      log.error("Failed to list custom skills", { error: String(results[0].reason) });
+      errors.push("custom");
+    }
+    if (results[1].status === "rejected") {
+      log.error("Failed to list built-in skills", { error: String(results[1].reason) });
+      errors.push("builtin");
+    }
+
+    // If both sources failed, return 500
+    if (errors.length === 2) {
+      await log.flush();
+      return NextResponse.json(
+        { error: "Failed to list skills from all sources" },
+        { status: 500 }
+      );
+    }
 
     const allSkills = [...customSkills, ...builtinSkills];
 
     log.info("Skills listed", {
       custom: customSkills.length,
       builtin: builtinSkills.length,
+      errors: errors.length > 0 ? errors : undefined,
     });
     await log.flush();
 
-    return NextResponse.json({ skills: allSkills });
+    return NextResponse.json({
+      skills: allSkills,
+      ...(errors.length > 0 && { warnings: errors.map((s) => `Failed to load ${s} skills`) }),
+    });
   } catch (error) {
     log.error("Failed to list skills", {
       error: error instanceof Error ? error.message : String(error),
