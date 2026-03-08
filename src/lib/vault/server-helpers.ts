@@ -32,6 +32,14 @@ export async function readVault(): Promise<VaultFile> {
   }
 
   const { content } = await res.json();
+
+  // Track hash for optimistic locking on subsequent writes
+  const encoder = new TextEncoder();
+  const hashData = encoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', hashData);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  lastKnownHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
   const parsed = JSON.parse(content);
 
   // Check if already v3
@@ -53,25 +61,100 @@ export async function readVault(): Promise<VaultFile> {
 }
 
 /**
- * Write the vault file back to the file server.
+ * Get the current hash of the vault file for optimistic locking.
+ * Returns null if the file doesn't exist yet.
+ */
+async function getVaultHash(): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${FILE_SERVER_URL}/files?path=${encodeURIComponent(SECRETS_PATH)}`,
+      {
+        headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!res.ok) return null;
+    const { content } = await res.json();
+    // Simple hash via Web Crypto (SHA-256 hex)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(content);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
+/** In-memory lock hash for optimistic concurrency */
+let lastKnownHash: string | null = null;
+
+/**
+ * Write the vault file back to the file server using atomic write pattern.
+ *
+ * 1. Compute hash of current file for optimistic locking
+ * 2. Write to a temporary path first
+ * 3. Rename (atomic on POSIX) to the final path
+ *
+ * If the file was modified since the last read, throws a conflict error
+ * so the caller can re-read and retry.
  */
 export async function writeVault(vault: VaultFile): Promise<void> {
-  const res = await fetch(`${FILE_SERVER_URL}/files`, {
+  // Optimistic lock: check that the file hasn't changed since we last read it
+  if (lastKnownHash !== null) {
+    const currentHash = await getVaultHash();
+    if (currentHash !== null && currentHash !== lastKnownHash) {
+      throw new Error(
+        'Vault file was modified by another process. Re-read and retry.',
+      );
+    }
+  }
+
+  const content = JSON.stringify(vault, null, 2);
+  const tmpPath = SECRETS_PATH + '.tmp.' + Date.now();
+
+  // Step 1: Write to temp file
+  const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      path: SECRETS_PATH,
-      content: JSON.stringify(vault, null, 2),
-    }),
+    body: JSON.stringify({ path: tmpPath, content }),
     signal: AbortSignal.timeout(10_000),
   });
 
-  if (!res.ok) {
-    throw new Error(`File server write returned ${res.status}`);
+  if (!writeRes.ok) {
+    throw new Error(`File server write (temp) returned ${writeRes.status}`);
   }
+
+  // Step 2: Atomic rename temp → final
+  const renameRes = await fetch(`${FILE_SERVER_URL}/files/rename`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: tmpPath, to: SECRETS_PATH }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!renameRes.ok) {
+    // Attempt cleanup of temp file on failure
+    await fetch(`${FILE_SERVER_URL}/files?path=${encodeURIComponent(tmpPath)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => {});
+    throw new Error(`File server rename returned ${renameRes.status}`);
+  }
+
+  // Update optimistic lock hash after successful write
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  lastKnownHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
