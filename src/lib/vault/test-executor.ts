@@ -40,6 +40,8 @@ const DEFAULT_DOMAIN_ALLOWLIST = [
   'hooks.slack.com',
   'discord.com',
   'api.notion.com',
+  'api.supabase.com',
+  'api.axiom.co',
 ];
 
 function getDomainAllowlist(): string[] {

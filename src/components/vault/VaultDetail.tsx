@@ -471,8 +471,6 @@ export function VaultDetail({ item, createType, onClose, onSaved, onRefresh, onD
         success,
         message: success ? "Test passed" : (data.result?.message || "Test failed"),
       });
-      // Refresh items in background (updates badges) but DON'T close panel
-      onRefresh?.();
     } catch (err) {
       setTestResult({
         success: false,
@@ -480,6 +478,8 @@ export function VaultDetail({ item, createType, onClose, onSaved, onRefresh, onD
       });
     } finally {
       setTesting(false);
+      // Always refresh items after test (updates badges) regardless of outcome
+      onRefresh?.();
     }
   };
 
