@@ -1,4 +1,3 @@
-export { SkillsLayout } from "./SkillsLayout";
-export { SkillCard } from "./SkillCard";
-export { SkillDetail } from "./SkillDetail";
+export { SkillsClient } from "./SkillsClient";
+export { SkillTree } from "./SkillTree";
 export type { SkillInfo, FileInfo } from "./types";
