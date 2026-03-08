@@ -32,6 +32,7 @@ export interface SessionInfo {
   file: string;
   size: number;
   modifiedAt: string;
+  startedAt?: string;
   meta: { key?: string; [k: string]: unknown };
 }
 

@@ -70,8 +70,9 @@ function parseDate(filename: string): Date | undefined {
 }
 
 function formatSessionDate(s: SessionInfo): string {
+  const dateStr = s.startedAt || s.modifiedAt;
   try {
-    return new Date(s.modifiedAt).toLocaleDateString("en-US", {
+    return new Date(dateStr).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
     });
@@ -128,14 +129,14 @@ export function MemoryClient() {
       })
       .catch(() => {});
 
-    // Load sessions
+    // Load sessions (sort by startedAt if available, otherwise modifiedAt)
     listSessions()
       .then((s) =>
         setSessions(
           [...s].sort(
             (a, b) =>
-              new Date(b.modifiedAt).getTime() -
-              new Date(a.modifiedAt).getTime()
+              new Date(b.startedAt || b.modifiedAt).getTime() -
+              new Date(a.startedAt || a.modifiedAt).getTime()
           )
         )
       )
@@ -395,7 +396,7 @@ export function MemoryClient() {
                           ? "Cron"
                           : st === "slash"
                             ? "Slash"
-                            : null; // Don't show badge for unknown sessions
+                            : null; // No badge for unknown/other sessions
                   const typeBadgeClass =
                     st === "main"
                       ? "border-blue-800 text-blue-400"
