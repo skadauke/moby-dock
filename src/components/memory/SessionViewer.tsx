@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Markdown } from "@/components/ui/markdown";
 import { getSession, getSessionType } from "@/lib/memory-api";
 import type { SessionMessage, SessionInfo } from "@/lib/memory-api";
 
 interface SessionViewerProps {
   sessionId: string;
   sessionInfo?: SessionInfo;
+  highlightText?: string;
 }
 
 /** How many messages to show per page */
@@ -41,12 +43,54 @@ function formatSessionDate(info?: SessionInfo): string {
   }
 }
 
-export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
+/**
+ * Strip internal metadata from message text:
+ * - [message_id: ...], [sender_id: ...], etc.
+ * - "Conversation info (untrusted metadata):" blocks with JSON
+ * - "Sender (untrusted metadata):" blocks
+ * - Lines that are just JSON with message_id, sender_id, sender, timestamp
+ */
+function stripMetadata(text: string): string {
+  // Strip [key: value] patterns for known metadata keys
+  let cleaned = text.replace(/\[(?:message_id|sender_id|chat_id|reply_to_message_id|forward_from):\s*[^\]]*\]/gi, "");
+
+  // Strip "Conversation info (untrusted metadata):" block and following JSON-like content
+  cleaned = cleaned.replace(
+    /Conversation info \(untrusted metadata\):?\s*\n?(\{[\s\S]*?\}\s*\n?|\s*(?:(?:message_id|sender_id|sender|timestamp|chat_id)[^\n]*\n?)*)/gi,
+    ""
+  );
+
+  // Strip "Sender (untrusted metadata):" blocks
+  cleaned = cleaned.replace(
+    /Sender \(untrusted metadata\):?\s*[^\n]*\n?/gi,
+    ""
+  );
+
+  // Strip standalone JSON blocks that contain metadata fields
+  cleaned = cleaned.replace(
+    /^\s*\{[^}]*(?:"message_id"|"sender_id"|"sender"|"timestamp")[^}]*\}\s*$/gm,
+    ""
+  );
+
+  // Strip lines that are just metadata key-value pairs
+  cleaned = cleaned.replace(
+    /^\s*(?:message_id|sender_id|sender|timestamp|chat_id|reply_to_message_id):\s*.*$/gm,
+    ""
+  );
+
+  // Clean up excessive blank lines left behind
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+
+  return cleaned;
+}
+
+export function SessionViewer({ sessionId, sessionInfo, highlightText }: SessionViewerProps) {
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,6 +99,7 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
       setIsLoading(true);
       setError(null);
       setVisibleCount(PAGE_SIZE);
+      setHighlightedMsgId(null);
       try {
         const data = await getSession(sessionId);
         if (cancelled) return;
@@ -72,24 +117,56 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
     };
   }, [sessionId]);
 
-  // Auto-scroll to bottom on initial load
+  // Scroll to top by default, or scroll to highlighted message if highlightText is set
   useEffect(() => {
-    if (!isLoading && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (isLoading || messages.length === 0) return;
+
+    if (highlightText) {
+      const lowerQuery = highlightText.toLowerCase();
+      const matchIdx = messages.findIndex((m) =>
+        stripMetadata(m.text).toLowerCase().includes(lowerQuery)
+      );
+      if (matchIdx >= 0) {
+        // Ensure the matched message is visible by adjusting visibleCount
+        // We show messages from startIdx = max(0, messages.length - visibleCount)
+        // We need matchIdx >= startIdx, so visibleCount >= messages.length - matchIdx
+        const neededVisible = messages.length - matchIdx;
+        if (neededVisible > visibleCount) {
+          setVisibleCount(Math.min(neededVisible + PAGE_SIZE, messages.length));
+        }
+        setHighlightedMsgId(messages[matchIdx].id);
+        // Scroll to the highlighted message after render
+        requestAnimationFrame(() => {
+          const el = document.getElementById(`msg-${messages[matchIdx].id}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            // Flash highlight
+            el.classList.add("ring-2", "ring-yellow-500/60");
+            setTimeout(() => {
+              el.classList.remove("ring-2", "ring-yellow-500/60");
+              setHighlightedMsgId(null);
+            }, 2000);
+          }
+        });
+        return;
+      }
     }
-  }, [isLoading]);
+
+    // Default: scroll to top
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [isLoading, messages, highlightText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // Load more when scrolling near top
-    if (el.scrollTop < 200 && visibleCount < messages.length) {
-      const prevHeight = el.scrollHeight;
+    // Load more when scrolling near bottom (since we now start at top)
+    if (
+      el.scrollTop + el.clientHeight > el.scrollHeight - 200 &&
+      visibleCount < messages.length
+    ) {
       setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, messages.length));
-      // Maintain scroll position
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight - prevHeight + el.scrollTop;
-      });
     }
   }, [visibleCount, messages.length]);
 
@@ -115,9 +192,8 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
             ? "border-green-700 text-green-400"
             : "border-zinc-700 text-zinc-400";
 
-  // Show the latest N messages (paginated from end)
-  const startIdx = Math.max(0, messages.length - visibleCount);
-  const visibleMessages = messages.slice(startIdx);
+  // Show first N messages (start from top now)
+  const visibleMessages = messages.slice(0, visibleCount);
 
   if (isLoading) {
     return (
@@ -159,21 +235,18 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto p-4 space-y-3"
       >
-        {startIdx > 0 && (
-          <div className="text-center text-xs text-zinc-600 py-2">
-            ↑ {startIdx} earlier message{startIdx !== 1 ? "s" : ""} — scroll up
-            to load
-          </div>
-        )}
-
         {visibleMessages.map((msg) => {
+          const cleanText = stripMetadata(msg.text);
+          // Skip messages that are only metadata
+          if (!cleanText) return null;
+
           if (msg.role === "system") {
             return (
-              <div key={msg.id} className="flex justify-center">
+              <div key={msg.id} id={`msg-${msg.id}`} className="flex justify-center">
                 <div className="max-w-lg px-3 py-1.5 rounded bg-zinc-800/50 text-zinc-500 text-xs text-center">
-                  {msg.text.length > 200
-                    ? msg.text.slice(0, 200) + "…"
-                    : msg.text}
+                  {cleanText.length > 200
+                    ? cleanText.slice(0, 200) + "…"
+                    : cleanText}
                   {msg.timestamp && (
                     <span className="ml-2 text-zinc-600">
                       {formatTimestamp(msg.timestamp)}
@@ -185,10 +258,18 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
           }
 
           const isUser = msg.role === "user";
+          const displayText =
+            cleanText.length > 2000
+              ? cleanText.slice(0, 2000) + "\n\n…(truncated)"
+              : cleanText;
+
           return (
             <div
               key={msg.id}
-              className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+              id={`msg-${msg.id}`}
+              className={`flex ${isUser ? "justify-end" : "justify-start"} transition-all duration-500 ${
+                highlightedMsgId === msg.id ? "ring-2 ring-yellow-500/60 rounded-lg" : ""
+              }`}
             >
               <div
                 className={`max-w-[75%] rounded-lg px-3 py-2 ${
@@ -205,15 +286,27 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
                     </span>
                   )}
                 </div>
-                <div className="text-sm text-zinc-200 whitespace-pre-wrap break-words">
-                  {msg.text.length > 2000
-                    ? msg.text.slice(0, 2000) + "\n\n…(truncated)"
-                    : msg.text}
-                </div>
+                {isUser ? (
+                  <div className="text-sm text-zinc-200 whitespace-pre-wrap break-words">
+                    {displayText}
+                  </div>
+                ) : (
+                  <Markdown className="text-sm text-zinc-200 break-words [&_pre]:bg-zinc-900 [&_code]:bg-zinc-900">
+                    {displayText}
+                  </Markdown>
+                )}
               </div>
             </div>
           );
         })}
+
+        {visibleCount < messages.length && (
+          <div className="text-center text-xs text-zinc-600 py-2">
+            ↓ {messages.length - visibleCount} more message
+            {messages.length - visibleCount !== 1 ? "s" : ""} — scroll down to
+            load
+          </div>
+        )}
       </div>
     </div>
   );
