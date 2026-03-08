@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useState, useCallback } from "rea
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragOverlay,
   DragStartEvent,
   PointerSensor,
@@ -20,11 +21,15 @@ import { TaskCard } from "./task-card";
 interface KanbanDndContextValue {
   activeTask: Task | null;
   isDraggingTask: boolean;
+  activeOverColumnId: Status | null;
+  activeOverTaskId: string | null;
 }
 
 const KanbanDndStateContext = createContext<KanbanDndContextValue>({
   activeTask: null,
   isDraggingTask: false,
+  activeOverColumnId: null,
+  activeOverTaskId: null,
 });
 
 export function useKanbanDnd() {
@@ -49,6 +54,8 @@ export function KanbanDndProvider({
   disabled = false,
 }: KanbanDndProviderProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [activeOverColumnId, setActiveOverColumnId] = useState<Status | null>(null);
+  const [activeOverTaskId, setActiveOverTaskId] = useState<string | null>(null);
 
   // Disable sensors when DnD is disabled (e.g., during filtering)
   const sensors = useSensors(
@@ -65,9 +72,41 @@ export function KanbanDndProvider({
     }
   }, [tasks]);
 
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { over } = event;
+    if (!over) {
+      setActiveOverColumnId(null);
+      setActiveOverTaskId(null);
+      return;
+    }
+
+    const overId = over.id as string;
+
+    // Check if hovering directly over a column
+    const overColumn = COLUMNS.find((c) => c.id === overId);
+    if (overColumn) {
+      setActiveOverColumnId(overColumn.id);
+      setActiveOverTaskId(null);
+      return;
+    }
+
+    // Check if hovering over a task — resolve its column
+    const overTask = tasks.find((t) => t.id === overId);
+    if (overTask) {
+      setActiveOverColumnId(overTask.status);
+      setActiveOverTaskId(overTask.id);
+      return;
+    }
+
+    setActiveOverColumnId(null);
+    setActiveOverTaskId(null);
+  }, [tasks]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
+    setActiveOverColumnId(null);
+    setActiveOverTaskId(null);
 
     if (!over) return;
 
@@ -166,11 +205,12 @@ export function KanbanDndProvider({
   }, [tasks]);
 
   return (
-    <KanbanDndStateContext.Provider value={{ activeTask, isDraggingTask: !!activeTask }}>
+    <KanbanDndStateContext.Provider value={{ activeTask, isDraggingTask: !!activeTask, activeOverColumnId, activeOverTaskId }}>
       <DndContext
         sensors={sensors}
         collisionDetection={customCollisionDetection}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         {children}
