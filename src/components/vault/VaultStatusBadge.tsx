@@ -40,6 +40,7 @@ export function TestBadge({
 
   const passed = status === "passed";
   const relative = timestamp ? timeAgo(timestamp) : "";
+  const isStale = timestamp ? isOlderThan24h(timestamp) : false;
 
   return (
     <Badge
@@ -47,7 +48,9 @@ export function TestBadge({
       className={cn(
         "text-[10px] gap-1 px-1.5 py-0",
         passed
-          ? "text-green-400 border-green-400/30"
+          ? isStale
+            ? "text-emerald-700/50 border-emerald-700/20"
+            : "text-emerald-500 border-emerald-500/30"
           : "text-red-400 border-red-400/30",
       )}
     >
@@ -70,6 +73,10 @@ export function getExpiryStatus(expires: string | null | undefined, warningDays 
 export function getTestStatus(result?: "pass" | "fail" | null): TestStatus {
   if (!result) return "untested";
   return result === "pass" ? "passed" : "failed";
+}
+
+function isOlderThan24h(iso: string): boolean {
+  return Date.now() - new Date(iso).getTime() > 24 * 60 * 60 * 1000;
 }
 
 function timeAgo(iso: string): string {

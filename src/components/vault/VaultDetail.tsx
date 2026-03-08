@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   X,
   Eye,
   EyeOff,
@@ -35,6 +48,7 @@ import {
   ChevronRight,
   FlaskConical,
   Wand2,
+  ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CREDENTIAL_TYPES, type FieldSchema } from "@/lib/vault/schemas";
@@ -47,6 +61,23 @@ import {
   getTestStatus,
 } from "./VaultStatusBadge";
 import { getTestPreset } from "@/lib/vault/test-presets";
+import { COUNTRIES } from "@/lib/vault/countries";
+
+// ── Validation Helpers ──────────────────────────────────────────────
+
+function validateEmail(email: string): string | null {
+  if (!email) return null;
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email) ? null : "Invalid email address";
+}
+
+function validatePhone(phone: string): string | null {
+  if (!phone) return null;
+  const cleaned = phone.replace(/[\s\-().]/g, "");
+  if (!/^\+?\d+$/.test(cleaned)) return "Invalid phone number";
+  if (cleaned.replace(/\D/g, "").length < 7) return "Phone number too short";
+  return null;
+}
 
 // ── Payment Card Utilities ──────────────────────────────────────────
 
@@ -99,10 +130,12 @@ interface Props {
   createType: VaultItemType | null;
   onClose: () => void;
   onSaved: () => void;
+  /** Refresh items without closing panel (used after test) */
+  onRefresh?: () => void;
   onDeleted: () => void;
 }
 
-export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: Props) {
+export function VaultDetail({ item, createType, onClose, onSaved, onRefresh, onDeleted }: Props) {
   const isCreate = !!createType;
   const type = createType ?? item?.type ?? "api_key";
   const schema = CREDENTIAL_TYPES[type];
@@ -117,6 +150,9 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   // Payment card validation
   const [cardErrors, setCardErrors] = useState<Record<string, string | null>>({});
 
+  // Field validation errors (email, phone)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+
   // Test config state
   const [testConfig, setTestConfig] = useState<Partial<TestConfig>>({});
   const [testConfigOpen, setTestConfigOpen] = useState(false);
@@ -127,9 +163,19 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // #6: Clear all state when selected item changes
+  useEffect(() => {
+    setError(null);
+    setTestResult(null);
+    setCardErrors({});
+    setFieldErrors({});
+    setCopiedKey(null);
+  }, [item?.id, createType]);
 
   // Populate form when item changes
   useEffect(() => {
@@ -211,6 +257,17 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     }
   };
 
+  // Field validation on blur (#11)
+  const handleFieldBlur = (field: FieldSchema) => {
+    if (field.validation === "email") {
+      const err = validateEmail(values[field.key] ?? "");
+      setFieldErrors((prev) => ({ ...prev, [field.key]: err }));
+    } else if (field.validation === "phone") {
+      const err = validatePhone(values[field.key] ?? "");
+      setFieldErrors((prev) => ({ ...prev, [field.key]: err }));
+    }
+  };
+
   // Reveal secrets
   const revealSecrets = useCallback(async () => {
     if (!item) return;
@@ -240,17 +297,46 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     }
   };
 
-  // Copy
+  // #7: Copy without reveal — fetch from API but don't show on screen
   const copyValue = async (key: string) => {
-    const val = revealed[key] || values[key];
+    // If already revealed or it's a create form, copy directly
+    const directVal = revealed[key] || (isCreate ? values[key] : undefined);
+    if (directVal) {
+      try {
+        await navigator.clipboard.writeText(directVal);
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(null), 2000);
+      } catch { /* silent */ }
+      return;
+    }
+
+    // For secret fields on existing items: fetch via reveal API but don't show
+    if (item) {
+      try {
+        const res = await fetch(`/api/vault/items/${item.id}/reveal`, { method: "POST" });
+        if (!res.ok) throw new Error("Failed to reveal for copy");
+        const data = await res.json();
+        const secrets = data.secrets ?? {};
+        const val = secrets[key];
+        if (val) {
+          await navigator.clipboard.writeText(val);
+          setCopiedKey(key);
+          setTimeout(() => setCopiedKey(null), 2000);
+        }
+      } catch {
+        setError("Failed to copy secret");
+      }
+      return;
+    }
+
+    // Fall back to visible value
+    const val = values[key];
     if (!val) return;
     try {
       await navigator.clipboard.writeText(val);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 2000);
-    } catch {
-      // silent
-    }
+    } catch { /* silent */ }
   };
 
   // Save
@@ -370,18 +456,28 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     }
   };
 
-  // Test
+  // #1 & #2: Test — show result inline, don't close panel
   const handleTest = async () => {
     if (!item) return;
     setTesting(true);
+    setTestResult(null);
     setError(null);
     try {
       const res = await fetch(`/api/vault/items/${item.id}/test`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Test failed");
-      onSaved(); // Refresh to get updated test status
+      const success = data.result?.success ?? false;
+      setTestResult({
+        success,
+        message: success ? "Test passed" : (data.result?.message || "Test failed"),
+      });
+      // Refresh items in background (updates badges) but DON'T close panel
+      onRefresh?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Test failed");
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Test failed",
+      });
     } finally {
       setTesting(false);
     }
@@ -422,26 +518,52 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
 
         {/* Status bar */}
         {!isCreate && item && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/50">
-            <ExpiryBadge status={getExpiryStatus(item.expires)} />
-            {schema.testable && (
-              <>
-                <TestBadge status={getTestStatus(item.lastTestResult)} timestamp={item.lastTested} />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs gap-1 ml-auto"
-                  onClick={handleTest}
-                  disabled={testing}
-                >
-                  {testing ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Play className="h-3 w-3" />
-                  )}
-                  Test now
-                </Button>
-              </>
+          <div className="flex flex-col border-b border-zinc-800/50">
+            <div className="flex items-center gap-2 px-4 py-2">
+              <ExpiryBadge status={getExpiryStatus(item.expires)} />
+              {schema.testable && (
+                <>
+                  <TestBadge status={getTestStatus(item.lastTestResult)} timestamp={item.lastTested} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs gap-1 ml-auto"
+                    onClick={handleTest}
+                    disabled={testing}
+                  >
+                    {testing ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
+                    Test now
+                  </Button>
+                </>
+              )}
+            </div>
+            {/* #1: Inline test result */}
+            {testResult && (
+              <div
+                className={cn(
+                  "px-4 py-1.5 text-xs flex items-center gap-1.5",
+                  testResult.success
+                    ? "text-emerald-400 bg-emerald-950/30"
+                    : "text-red-400 bg-red-950/30",
+                )}
+              >
+                {testResult.success ? (
+                  <Check className="h-3 w-3" />
+                ) : (
+                  <X className="h-3 w-3" />
+                )}
+                {testResult.message}
+              </div>
+            )}
+            {/* #10: OAuth test note */}
+            {type === "oauth_credential" && schema.testable && (
+              <div className="px-4 py-1 text-[10px] text-zinc-500">
+                Testing uses the Access Token.
+              </div>
             )}
           </div>
         )}
@@ -498,8 +620,11 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
               onCopy={() => copyValue(field.key)}
               isCreate={isCreate}
               hasSecretValue={item?.secretFieldKeys?.includes(field.key) ?? false}
-              onBlur={() => handleCardBlur(field.key)}
-              error={cardErrors[field.key] ?? undefined}
+              onBlur={() => {
+                handleCardBlur(field.key);
+                handleFieldBlur(field);
+              }}
+              error={cardErrors[field.key] ?? fieldErrors[field.key] ?? undefined}
               readOnlyOverride={type === "payment_card" && field.key === "brand" ? true : undefined}
             />
           ))}
@@ -717,6 +842,75 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   );
 }
 
+// ── Country Combobox ─────────────────────────────────────────────────
+function CountryCombobox({
+  value,
+  onChange,
+  required,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedCountry = useMemo(
+    () => COUNTRIES.find((c) => c.code === value || c.name === value),
+    [value],
+  );
+
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-zinc-400">
+        Country
+        {required && <span className="text-red-400 ml-0.5">*</span>}
+      </Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between bg-zinc-800 border-zinc-700 h-8 text-sm font-normal hover:bg-zinc-750"
+          >
+            {selectedCountry ? selectedCountry.name : "Select country…"}
+            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[320px] p-0 bg-zinc-800 border-zinc-700" align="start">
+          <Command className="bg-zinc-800">
+            <CommandInput placeholder="Search country…" className="text-sm" />
+            <CommandList>
+              <CommandEmpty>No country found.</CommandEmpty>
+              <CommandGroup>
+                {COUNTRIES.map((c) => (
+                  <CommandItem
+                    key={c.code}
+                    value={c.name}
+                    onSelect={() => {
+                      onChange(c.name);
+                      setOpen(false);
+                    }}
+                    className="text-sm"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-3.5 w-3.5",
+                        (value === c.code || value === c.name) ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {c.name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 // ── Individual Field Row ───────────────────────────────────────────
 function FieldRow({
   field,
@@ -749,7 +943,18 @@ function FieldRow({
 }) {
   const isSecret = field.type === "secret";
 
-  // For tags-type fields
+  // Country combobox
+  if (field.type === "country") {
+    return (
+      <CountryCombobox
+        value={value}
+        onChange={onChange}
+        required={field.required}
+      />
+    );
+  }
+
+  // For tags-type fields (#13: match styling with other inputs)
   if (field.type === "tags") {
     return (
       <div className="space-y-1">
@@ -763,6 +968,9 @@ function FieldRow({
           placeholder={field.placeholder || "comma-separated values"}
           className="bg-zinc-800 border-zinc-700 h-8 text-sm"
         />
+        {field.description && (
+          <p className="text-[10px] text-zinc-500">{field.description}</p>
+        )}
       </div>
     );
   }
@@ -787,6 +995,9 @@ function FieldRow({
             ))}
           </SelectContent>
         </Select>
+        {field.description && (
+          <p className="text-[10px] text-zinc-500">{field.description}</p>
+        )}
       </div>
     );
   }
@@ -805,6 +1016,9 @@ function FieldRow({
           placeholder={field.placeholder}
           className="bg-zinc-800 border-zinc-700 text-sm min-h-[60px]"
         />
+        {field.description && (
+          <p className="text-[10px] text-zinc-500">{field.description}</p>
+        )}
       </div>
     );
   }
@@ -856,6 +1070,9 @@ function FieldRow({
             </>
           )}
         </div>
+        {field.description && (
+          <p className="text-[10px] text-zinc-500">{field.description}</p>
+        )}
         {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
     );
@@ -883,6 +1100,9 @@ function FieldRow({
           error && "border-red-500/50",
         )}
       />
+      {field.description && (
+        <p className="text-[10px] text-zinc-500">{field.description}</p>
+      )}
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );

@@ -19,6 +19,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Search,
   Plus,
   Key,
@@ -32,6 +38,10 @@ import {
   BookOpen,
   Car,
   Hash,
+  Play,
+  Check,
+  X,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CREDENTIAL_TYPES, SIDEBAR_GROUPS } from "@/lib/vault/schemas";
@@ -70,11 +80,15 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAdd: (type: VaultItemType) => void;
+  onRefresh?: () => void;
 }
 
-export function VaultList({ items, selectedId, onSelect, onAdd }: Props) {
+export function VaultList({ items, selectedId, onSelect, onAdd, onRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("name");
+  // Track inline test results per item
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, "pass" | "fail">>({});
 
   const filtered = useMemo(() => {
     let list = items;
@@ -105,6 +119,38 @@ export function VaultList({ items, selectedId, onSelect, onAdd }: Props) {
 
     return list;
   }, [items, search, sort]);
+
+  // #3: Test from list view
+  const handleListTest = async (e: React.MouseEvent, itemId: string) => {
+    e.stopPropagation(); // Don't open detail panel
+    setTestingId(itemId);
+    try {
+      const res = await fetch(`/api/vault/items/${itemId}/test`, { method: "POST" });
+      const data = await res.json();
+      const success = res.ok && data.result?.success;
+      setTestResults((prev) => ({ ...prev, [itemId]: success ? "pass" : "fail" }));
+      // Clear result after 3s
+      setTimeout(() => {
+        setTestResults((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
+      }, 3000);
+      onRefresh?.();
+    } catch {
+      setTestResults((prev) => ({ ...prev, [itemId]: "fail" }));
+      setTimeout(() => {
+        setTestResults((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
+      }, 3000);
+    } finally {
+      setTestingId(null);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -221,9 +267,45 @@ export function VaultList({ items, selectedId, onSelect, onAdd }: Props) {
                 </div>
               </div>
 
-              <div className="shrink-0 flex flex-col items-end gap-1">
-                <ExpiryBadge status={expiryStatus} />
-                {schema.testable && <TestBadge status={testStatus} timestamp={item.lastTested} />}
+              <div className="shrink-0 flex items-center gap-1.5">
+                {/* Inline test button for testable items */}
+                {schema.testable && item.test && item.hasValue && (
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={(e) => handleListTest(e, item.id)}
+                          disabled={testingId === item.id}
+                          className={cn(
+                            "h-6 w-6 rounded flex items-center justify-center transition-colors",
+                            testResults[item.id] === "pass"
+                              ? "text-emerald-400"
+                              : testResults[item.id] === "fail"
+                                ? "text-red-400"
+                                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50",
+                          )}
+                        >
+                          {testingId === item.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : testResults[item.id] === "pass" ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : testResults[item.id] === "fail" ? (
+                            <X className="h-3.5 w-3.5" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="text-xs">
+                        Test credential
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <div className="flex flex-col items-end gap-1">
+                  <ExpiryBadge status={expiryStatus} />
+                  {schema.testable && <TestBadge status={testStatus} timestamp={item.lastTested} />}
+                </div>
               </div>
             </button>
           );
