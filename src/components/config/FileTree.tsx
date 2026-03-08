@@ -151,7 +151,7 @@ export function FileTree({
   onAddToQuickAccess,
 }: FileTreeProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false); // Collapsed by default
   const [error, setError] = useState<string | null>(null);
 
