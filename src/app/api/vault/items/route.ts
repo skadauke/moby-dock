@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { readVault, writeVault, maskItem } from '@/lib/vault/server-helpers';
 import type { VaultItem, VaultItemType } from '@/lib/vault/types';
 import { CREDENTIAL_TYPES } from '@/lib/vault/schemas';
+import { deriveExpires } from '@/lib/vault/server-helpers';
 
 // ── GET ────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -92,9 +93,15 @@ export async function POST(request: NextRequest) {
 
     const vault = await readVault();
 
+    const itemType = body.type as VaultItemType;
+    const itemFields = body.fields || {};
+
+    // Derive top-level expires from type-specific fields if not explicitly provided
+    const expires = body.expires ?? deriveExpires(itemType, itemFields) ?? null;
+
     const newItem: VaultItem = {
       id: randomUUID(),
-      type: body.type as VaultItemType,
+      type: itemType,
       name: body.name,
       value: body.value,
       service: body.service,
@@ -102,12 +109,12 @@ export async function POST(request: NextRequest) {
       password: body.password,
       url: body.url,
       created: body.created || new Date().toISOString().split('T')[0],
-      expires: body.expires ?? null,
+      expires,
       tags: body.tags || [],
       notes: body.notes,
       usedBy: body.usedBy || [],
       test: body.test,
-      fields: body.fields || {},
+      fields: itemFields,
     };
 
     vault.items.push(newItem);

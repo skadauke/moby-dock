@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from 'next-axiom';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { readVault, writeVault, maskItem } from '@/lib/vault/server-helpers';
+import { readVault, writeVault, maskItem, deriveExpires } from '@/lib/vault/server-helpers';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -58,6 +58,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const existing = vault.items[idx];
 
+    // Merge fields — keep existing values for fields not in the update
+    const mergedFields = body.fields !== undefined
+      ? { ...existing.fields, ...body.fields }
+      : existing.fields;
+
+    // Derive top-level expires from type-specific fields if not explicitly set
+    const resolvedExpires = body.expires !== undefined
+      ? body.expires
+      : deriveExpires(existing.type, mergedFields ?? {}) ?? existing.expires;
+
     // Merge update — keep id and type immutable
     const updated = {
       ...existing,
@@ -67,14 +77,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
       username: body.username !== undefined ? body.username : existing.username,
       password: body.password !== undefined ? body.password : existing.password,
       url: body.url !== undefined ? body.url : existing.url,
-      expires: body.expires !== undefined ? body.expires : existing.expires,
+      expires: resolvedExpires,
       tags: body.tags !== undefined ? body.tags : existing.tags,
       notes: body.notes !== undefined ? body.notes : existing.notes,
       usedBy: body.usedBy !== undefined ? body.usedBy : existing.usedBy,
       test: body.test !== undefined ? body.test : existing.test,
-      fields: body.fields !== undefined
-        ? { ...existing.fields, ...body.fields }
-        : existing.fields,
+      fields: mergedFields,
     };
 
     vault.items[idx] = updated;

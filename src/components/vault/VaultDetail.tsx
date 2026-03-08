@@ -34,6 +34,7 @@ import {
   ChevronDown,
   ChevronRight,
   FlaskConical,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CREDENTIAL_TYPES, type FieldSchema } from "@/lib/vault/schemas";
@@ -45,6 +46,7 @@ import {
   getExpiryStatus,
   getTestStatus,
 } from "./VaultStatusBadge";
+import { getTestPreset } from "@/lib/vault/test-presets";
 
 // ── Payment Card Utilities ──────────────────────────────────────────
 
@@ -263,6 +265,9 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
         return;
       }
 
+      // Use the current type's schema for validation
+      const currentSchema = CREDENTIAL_TYPES[type];
+
       // Build body from form values
       const body: Record<string, unknown> = { name: name.trim(), tags };
 
@@ -277,13 +282,29 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
 
       const fields: Record<string, string | string[]> = {};
 
-      for (const f of schema.fields) {
+      for (const f of currentSchema.fields) {
         const v = values[f.key]?.trim();
+        const isSecretField = f.type === "secret";
+        const serverHasValue = !isCreate && item?.secretFieldKeys?.includes(f.key);
+
+        // Skip validation for secret fields that already have a value on the server
+        // and the user hasn't entered a new value
         if (!v && f.required) {
+          if (isSecretField && serverHasValue) {
+            // Server already has this secret — skip validation and omit from body
+            continue;
+          }
           setError(`${f.label} is required`);
           setSaving(false);
           return;
         }
+
+        // For secret fields on existing items: if unrevealed and unchanged, omit from body
+        // so the server keeps existing values
+        if (isSecretField && !isCreate && !v && serverHasValue) {
+          continue;
+        }
+
         if (!v) continue;
 
         if (f.key === "value") body.value = v;
@@ -387,16 +408,13 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
         )}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
-          <div className="h-8 w-8 rounded-md bg-zinc-800 flex items-center justify-center shrink-0">
-            <Icon className="h-4 w-4 text-zinc-400" />
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-md bg-zinc-800 flex items-center justify-center shrink-0">
+              <Icon className="h-4 w-4 text-zinc-400" />
+            </div>
+            <span className="text-sm font-medium text-zinc-300">{schema.label}</span>
           </div>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Item name…"
-            className="bg-transparent border-none text-base font-medium h-8 px-0 focus-visible:ring-0"
-          />
           <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -430,6 +448,43 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
 
         {/* Fields */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {/* Name field — prominent with label */}
+          <div className="space-y-1">
+            <Label className="text-xs text-zinc-400">
+              Name<span className="text-red-400 ml-0.5">*</span>
+            </Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Item name…"
+              className={cn(
+                "bg-zinc-800 border-zinc-700 h-8 text-sm font-medium",
+                error === "Name is required" && "border-red-500/50",
+              )}
+            />
+          </div>
+
+          {/* Auto-fill test config button */}
+          {schema.testable && (() => {
+            const serviceVal = values.service?.toLowerCase().replace(/\s+/g, "_") ?? "";
+            const preset = serviceVal ? getTestPreset(serviceVal) : null;
+            if (!preset) return null;
+            return (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 text-xs border-zinc-700 text-zinc-400 hover:text-zinc-200"
+                onClick={() => {
+                  setTestConfig(preset.test);
+                  setTestConfigOpen(true);
+                }}
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Auto-fill test config for {preset.label}
+              </Button>
+            );
+          })()}
+
           {schema.fields.map((field) => (
             <FieldRow
               key={field.key}
@@ -807,6 +862,7 @@ function FieldRow({
   }
 
   // Regular text / date
+  const isDate = field.type === "date";
   return (
     <div className="space-y-1">
       <Label className="text-xs text-zinc-400">
@@ -814,14 +870,15 @@ function FieldRow({
         {field.required && <span className="text-red-400 ml-0.5">*</span>}
       </Label>
       <Input
-        type={field.type === "date" ? "date" : "text"}
+        type={isDate ? "date" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
-        placeholder={field.placeholder}
+        placeholder={isDate ? "MM/DD/YYYY" : field.placeholder}
         readOnly={readOnlyOverride}
         className={cn(
           "bg-zinc-800 border-zinc-700 h-8 text-sm",
+          isDate && !value && "text-zinc-500 uppercase [&::-webkit-datetime-edit-text]:text-zinc-500 [&::-webkit-datetime-edit-month-field]:text-zinc-500 [&::-webkit-datetime-edit-day-field]:text-zinc-500 [&::-webkit-datetime-edit-year-field]:text-zinc-500",
           readOnlyOverride && "text-zinc-500",
           error && "border-red-500/50",
         )}
