@@ -27,10 +27,10 @@ import {
 const navItems = [
   { href: "/command", label: "Command", icon: LayoutDashboard },
   { href: "/config", label: "Config", icon: Settings },
-  { href: "/vault", label: "Vault", icon: KeyRound },
-  { href: "/log", label: "Log", icon: ScrollText },
-  { href: "/memory", label: "Memory", icon: Brain },
   { href: "/skills", label: "Skills", icon: Sparkles },
+  { href: "/vault", label: "Vault", icon: KeyRound },
+  { href: "/memory", label: "Memory", icon: Brain },
+  { href: "/log", label: "Log", icon: ScrollText },
 ];
 
 interface NavProps {
