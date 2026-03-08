@@ -395,7 +395,7 @@ export function MemoryClient() {
                           ? "Cron"
                           : st === "slash"
                             ? "Slash"
-                            : "Other";
+                            : null; // Don't show badge for unknown sessions
                   const typeBadgeClass =
                     st === "main"
                       ? "border-blue-800 text-blue-400"
@@ -426,12 +426,14 @@ export function MemoryClient() {
                       <span className="truncate text-xs">
                         {formatSessionDate(s)}
                       </span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[9px] px-1 py-0 h-4 ${typeBadgeClass}`}
-                      >
-                        {typeLabel}
-                      </Badge>
+                      {typeLabel && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] px-1 py-0 h-4 ${typeBadgeClass}`}
+                        >
+                          {typeLabel}
+                        </Badge>
+                      )}
                       <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">
                         {formatBytes(s.size)}
                       </span>

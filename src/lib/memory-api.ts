@@ -86,16 +86,21 @@ export async function getSession(id: string): Promise<SessionDetail> {
 }
 
 /**
- * Derive session type from meta.key
+ * Derive session type from meta.key or other heuristics.
+ * For sessions without metadata, tries to infer type from available info.
  */
 export function getSessionType(
-  meta?: { key?: string }
+  meta?: { key?: string; isReset?: boolean; [k: string]: unknown }
 ): "main" | "subagent" | "cron" | "slash" | "unknown" {
   const key = meta?.key || "";
   if (key === "agent:main:main") return "main";
   if (key.includes(":subagent:")) return "subagent";
   if (key.includes(":cron:")) return "cron";
   if (key.includes(":slash:") || key.includes(":telegram:slash:")) return "slash";
+
+  // If the session has no key but is a .reset file, it's likely a previous main session
+  if (!key && meta?.isReset) return "main";
+
   return "unknown";
 }
 
