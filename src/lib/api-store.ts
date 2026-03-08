@@ -17,9 +17,9 @@ interface TaskRow {
   updated_at: string;
 }
 
-// Map Status to database value (READY → IN_PROGRESS for backwards compatibility)
+// Status values are stored directly in the database
 function statusToDb(status: Status): string {
-  return status === "READY" ? "IN_PROGRESS" : status;
+  return status;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -27,7 +27,7 @@ function rowToTask(row: TaskRow): Task {
     id: row.id,
     title: row.title,
     description: row.description,
-    status: normalizeStatus(row.status), // IN_PROGRESS → READY
+    status: normalizeStatus(row.status),
     priority: row.priority as Priority,
     creator: row.creator as Creator,
     needsReview: row.needs_review,

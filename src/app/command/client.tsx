@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Task, Status } from "@/types/kanban";
 import { Board } from "@/components/command/board";
 import { TaskModal } from "@/components/command/task-modal";
@@ -23,6 +23,27 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
   // Use ref to access current tasks in callbacks without stale closure issues
   const tasksRef = useRef<Task[]>(tasks);
   tasksRef.current = tasks;
+
+  // Auto-refresh polling every 15 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/tasks');
+        if (res.ok) {
+          const data: Task[] = await res.json();
+          // Only update if data actually changed (compare by JSON)
+          const currentJson = JSON.stringify(tasksRef.current.map(t => t.id + t.status + t.position + t.title + t.needsReview).sort());
+          const newJson = JSON.stringify(data.map(t => t.id + t.status + t.position + t.title + t.needsReview).sort());
+          if (currentJson !== newJson) {
+            setTasks(data);
+          }
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Filter tasks based on current filter AND selected project
   const filteredTasks = useMemo(() => {

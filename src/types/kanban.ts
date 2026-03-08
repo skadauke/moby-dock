@@ -1,6 +1,6 @@
-// Task board types - ported from moby-kanban with IN_PROGRESS → READY rename
+// Task board types
 
-export type Status = "BACKLOG" | "READY" | "DONE";
+export type Status = "BACKLOG" | "READY" | "IN_PROGRESS" | "DONE";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type Creator = "MOBY" | "STEPHAN";
 
@@ -37,6 +37,7 @@ export interface Column {
 export const COLUMNS: { id: Status; title: string }[] = [
   { id: "BACKLOG", title: "Backlog" },
   { id: "READY", title: "Ready" },
+  { id: "IN_PROGRESS", title: "In Progress" },
   { id: "DONE", title: "Done" },
 ];
 
@@ -52,11 +53,11 @@ export const CREATORS: { value: Creator; label: string; emoji: string }[] = [
   { value: "STEPHAN", label: "Stephan", emoji: "👤" },
 ];
 
-// Map old status to new for database compatibility
+// Map database status strings to Status type
 export const STATUS_MAP: Record<string, Status> = {
   "BACKLOG": "BACKLOG",
-  "IN_PROGRESS": "READY",  // Legacy mapping
   "READY": "READY",
+  "IN_PROGRESS": "IN_PROGRESS",
   "DONE": "DONE",
 };
 

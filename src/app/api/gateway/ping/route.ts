@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { getAllTasks } from "@/lib/api-store";
+import { getAllTasks, updateTask } from "@/lib/api-store";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
@@ -101,12 +101,28 @@ export async function POST() {
     log.info("[Gateway] notify succeeded", {
       taskCount: readyTasks.length,
     });
+
+    // Move notified tasks from READY to IN_PROGRESS
+    const moveResults = await Promise.allSettled(
+      readyTasks.map((t) =>
+        updateTask(t.id, { status: "IN_PROGRESS" })
+      )
+    );
+    const movedCount = moveResults.filter(
+      (r) => r.status === "fulfilled" && r.value.ok
+    ).length;
+    log.info("[Gateway] moved tasks to IN_PROGRESS", {
+      attempted: readyTasks.length,
+      moved: movedCount,
+    });
+
     await log.flush();
 
     return NextResponse.json({
       success: true,
       notified: true,
       taskCount: readyTasks.length,
+      movedToInProgress: movedCount,
     });
   } catch (error) {
     log.error("[Gateway] notify error", {
