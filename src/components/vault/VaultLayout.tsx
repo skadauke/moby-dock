@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
+import { RefreshCw, AlertTriangle, KeyRound, FlaskConical, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { MaskedVaultItem, VaultItemType } from "@/lib/vault/types";
@@ -22,6 +22,11 @@ export function VaultLayout() {
   // Detail panel
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createType, setCreateType] = useState<VaultItemType | null>(null);
+
+  // Test All state
+  const [testAllRunning, setTestAllRunning] = useState(false);
+  const [testAllProgress, setTestAllProgress] = useState<{ current: number; total: number } | null>(null);
+  const [testAllResults, setTestAllResults] = useState<{ passed: number; failed: number } | null>(null);
 
   const fetchItems = useCallback(async () => {
     setIsRefreshing(true);
@@ -76,6 +81,50 @@ export function VaultLayout() {
     fetchItems();
   };
 
+  // Refresh items without closing the detail panel (used after testing)
+  const handleRefresh = () => {
+    fetchItems();
+  };
+
+  // #5: Test All handler
+  const handleTestAll = async () => {
+    // Find all testable items with test config and a value
+    const testable = allItems.filter((item) => {
+      const schema = CREDENTIAL_TYPES[item.type];
+      return schema?.testable && item.test && item.hasValue;
+    });
+
+    if (testable.length === 0) return;
+
+    setTestAllRunning(true);
+    setTestAllResults(null);
+    let passed = 0;
+    let failed = 0;
+
+    for (let i = 0; i < testable.length; i++) {
+      setTestAllProgress({ current: i + 1, total: testable.length });
+      try {
+        const res = await fetch(`/api/vault/items/${testable[i].id}/test`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok && data.result?.success) {
+          passed++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    setTestAllRunning(false);
+    setTestAllProgress(null);
+    setTestAllResults({ passed, failed });
+    fetchItems();
+
+    // Clear results after 5s
+    setTimeout(() => setTestAllResults(null), 5000);
+  };
+
   const handleDeleted = () => {
     handleClose();
     fetchItems();
@@ -110,15 +159,44 @@ export function VaultLayout() {
             {allItems.length} items
           </Badge>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={fetchItems}
-          disabled={isRefreshing}
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-2">
+          {testAllResults && (
+            <span className="text-xs text-zinc-400">
+              <span className="text-emerald-400">{testAllResults.passed} passed</span>
+              {testAllResults.failed > 0 && (
+                <>, <span className="text-red-400">{testAllResults.failed} failed</span></>
+              )}
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs border-zinc-700"
+            onClick={handleTestAll}
+            disabled={testAllRunning}
+          >
+            {testAllRunning ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Testing {testAllProgress?.current}/{testAllProgress?.total}…
+              </>
+            ) : (
+              <>
+                <FlaskConical className="h-3.5 w-3.5" />
+                Test All
+              </>
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={fetchItems}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </header>
 
       {/* Main area */}
@@ -129,6 +207,7 @@ export function VaultLayout() {
           selectedId={selectedId}
           onSelect={handleSelect}
           onAdd={handleAdd}
+          onRefresh={handleRefresh}
         />
       </div>
 
@@ -138,6 +217,7 @@ export function VaultLayout() {
         createType={createType}
         onClose={handleClose}
         onSaved={handleSaved}
+        onRefresh={handleRefresh}
         onDeleted={handleDeleted}
       />
     </div>

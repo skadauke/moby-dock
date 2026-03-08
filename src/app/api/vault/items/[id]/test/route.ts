@@ -39,12 +39,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
       );
     }
 
-    if (!item.value) {
+    // Determine the value to test with
+    let testValue = item.value;
+
+    // For OAuth credentials, fall back to accessToken if top-level value is empty
+    if (!testValue && item.type === 'oauth_credential') {
+      testValue = (item.fields?.accessToken as string) || undefined;
+    }
+
+    if (!testValue) {
       return NextResponse.json({ error: 'Credential has no value to test' }, { status: 400 });
     }
 
     // Proxy the test to the file server
-    const result = await proxyTest(item.test, item.value);
+    const result = await proxyTest(item.test, testValue);
 
     // Save result back
     item.lastTested = result.testedAt;
