@@ -268,31 +268,43 @@ app.post('/credentials/test', authenticate, async (req, res) => {
   }
 });
 
-// POST /gateway/ping - Send wake event to OpenClaw gateway
+// POST /gateway/ping - Send a message to Moby via OpenClaw gateway
+// Uses /tools/invoke with sessions_send to deliver a message into Moby's active session.
+// The message text is constructed server-side (not user-supplied) to prevent prompt injection.
 app.post('/gateway/ping', authenticate, async (req, res) => {
-  const { text = "Check Ready queue for tasks", mode = "now" } = req.body;
+  const { message } = req.body;
   
-  // Read gateway config to get the gateway URL
+  // Read gateway config
   const configPath = `${HOME}/.openclaw/openclaw.json`;
   
   try {
     const configContent = await fs.readFile(configPath, 'utf-8');
     const config = JSON.parse(configContent);
     
-    // Get gateway URL from config (default to localhost:3377)
-    const gatewayPort = config.gateway?.port || 3377;
+    const gatewayPort = config.gateway?.port || 18789;
+    const gatewayToken = config.gateway?.auth?.token;
     const gatewayUrl = `http://localhost:${gatewayPort}`;
     
-    // Call the gateway's wake endpoint with timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    if (!gatewayToken) {
+      return res.status(500).json({ error: 'Gateway auth token not configured' });
+    }
     
-    const response = await fetch(`${gatewayUrl}/api/cron/wake`, {
+    // Use /tools/invoke to call sessions_send
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(`${gatewayUrl}/tools/invoke`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${gatewayToken}`,
       },
-      body: JSON.stringify({ text, mode }),
+      body: JSON.stringify({
+        tool: 'sessions_send',
+        args: {
+          message: message || 'New task available in Moby Kanban. Check the Ready column.',
+        },
+      }),
       signal: controller.signal,
     });
     
@@ -300,20 +312,29 @@ app.post('/gateway/ping', authenticate, async (req, res) => {
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gateway ping failed:', response.status, errorText);
+      console.error('Gateway send failed:', response.status, errorText);
       return res.status(response.status).json({ 
-        error: 'Gateway ping failed', 
+        error: 'Failed to notify Moby', 
         details: errorText 
       });
     }
     
     const data = await response.json();
-    console.log('Gateway ping succeeded:', data);
-    res.json({ success: true, ...data });
+    
+    if (!data.ok) {
+      console.error('Gateway send error:', data.error);
+      return res.status(500).json({ 
+        error: 'Failed to notify Moby',
+        details: data.error?.message || 'Unknown error',
+      });
+    }
+    
+    console.log('Moby notified successfully');
+    res.json({ success: true });
   } catch (err) {
-    console.error('Gateway ping error:', err);
+    console.error('Gateway notify error:', err);
     res.status(500).json({ 
-      error: 'Failed to ping gateway', 
+      error: 'Failed to notify Moby', 
       details: err.message 
     });
   }

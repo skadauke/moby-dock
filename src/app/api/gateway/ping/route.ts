@@ -2,76 +2,115 @@ import { NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { getAllTasks } from "@/lib/api-store";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 
+// Rate limiting: max 1 notification per minute
+let lastNotifyTime = 0;
+const RATE_LIMIT_MS = 60_000;
+
 export async function POST() {
-  const log = new Logger({ source: "api/gateway/ping" });
-  
+  const log = new Logger({ source: "api/gateway/notify" });
+
   // Auth check
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
-    log.warn("Unauthorized access attempt to gateway ping");
+    log.warn("Unauthorized access attempt to gateway notify");
     await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  
-  log.info("POST /api/gateway/ping", { userId: session.user.id });
 
-  const startTime = Date.now();
+  // Rate limit
+  const now = Date.now();
+  if (now - lastNotifyTime < RATE_LIMIT_MS) {
+    const retryAfter = Math.ceil((RATE_LIMIT_MS - (now - lastNotifyTime)) / 1000);
+    log.warn("Rate limited", { userId: session.user.id, retryAfter });
+    await log.flush();
+    return NextResponse.json(
+      { error: "Rate limited. Try again in " + retryAfter + "s." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
+
+  log.info("POST /api/gateway/notify", { userId: session.user.id });
 
   try {
-    // Call the file server's gateway ping endpoint
-    // This will forward the wake event to the OpenClaw gateway
-    // Add timeout to prevent hanging requests
+    // Check Ready queue for tasks
+    const result = await getAllTasks();
+    if (!result.ok) {
+      log.error("Failed to fetch tasks", { error: result.error });
+      await log.flush();
+      return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
+    }
+    const readyTasks = result.data.filter(
+      (t) => t.status === "READY"
+    );
+
+    if (readyTasks.length === 0) {
+      log.info("No tasks in Ready queue");
+      await log.flush();
+      return NextResponse.json({ success: true, notified: false, reason: "No tasks in queue" });
+    }
+
+    // Build task summary (server-side, not user-supplied)
+    const taskLines = readyTasks.map((t) => {
+      const parts = [`**${t.title}**`];
+      if (t.description) parts.push(`Details: ${t.description}`);
+      if (t.priority) parts.push(`Priority: ${t.priority}`);
+      parts.push(`Creator: ${t.creator}`);
+      if (t.projectId) parts.push(`Project: ${t.projectId}`);
+      parts.push(`Created: ${new Date(t.createdAt).toLocaleDateString()}`);
+      parts.push(`Updated: ${new Date(t.updatedAt).toLocaleDateString()}`);
+      return parts.join("\n");
+    });
+
+    const message =
+      `New task${readyTasks.length > 1 ? "s" : ""} ready in Moby Kanban:\n\n` +
+      taskLines.join("\n\n---\n\n");
+
+    // Send to file server → gateway
     const res = await fetch(`${FILE_SERVER_URL}/gateway/ping`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${FILE_SERVER_TOKEN}`,
+        Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
       },
-      body: JSON.stringify({
-        text: "Check Ready queue for tasks",
-        mode: "now",
-      }),
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      body: JSON.stringify({ message }),
+      signal: AbortSignal.timeout(15000),
     });
 
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - lastNotifyTime;
 
     if (!res.ok) {
-      // Log error details server-side only (don't expose to client)
       const errorText = await res.text();
-      log.error("[Gateway] ping failed", {
+      log.error("[Gateway] notify failed", {
         status: res.status,
-        // Don't log full error text - may contain sensitive info
         errorLength: errorText.length,
-        duration,
       });
       await log.flush();
-      // Return generic error to client
       return NextResponse.json(
-        { error: "Failed to ping gateway" },
+        { error: "Failed to notify Moby" },
         { status: res.status }
       );
     }
 
+    lastNotifyTime = now;
     const data = await res.json();
-    // Only log metadata, not full response (may contain sensitive data)
-    log.info("[Gateway] ping succeeded", { 
-      duration, 
-      hasResponse: !!data,
-      responseKeys: data ? Object.keys(data) : []
+    log.info("[Gateway] notify succeeded", {
+      taskCount: readyTasks.length,
     });
     await log.flush();
 
-    return NextResponse.json({ success: true, ...data });
+    return NextResponse.json({
+      success: true,
+      notified: true,
+      taskCount: readyTasks.length,
+    });
   } catch (error) {
-    const duration = Date.now() - startTime;
-    log.error("[Gateway] ping error", {
+    log.error("[Gateway] notify error", {
       error: error instanceof Error ? error.message : "Unknown error",
-      duration,
     });
     await log.flush();
 
