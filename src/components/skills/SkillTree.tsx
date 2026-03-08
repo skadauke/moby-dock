@@ -53,15 +53,17 @@ function DirectoryNode({ node, selectedPath, isBuiltin, depth, onSelectFile }: D
   const [isExpanded, setIsExpanded] = useState(false);
   const [children, setChildren] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const toggle = useCallback(async () => {
     if (!isExpanded && children.length === 0) {
       setLoading(true);
+      setError(null);
       try {
         const files = await listDirectory(node.path);
         setChildren(files);
-      } catch {
-        // ignore
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
         setLoading(false);
       }
@@ -89,6 +91,9 @@ function DirectoryNode({ node, selectedPath, isBuiltin, depth, onSelectFile }: D
         <span className="truncate">{node.name}</span>
         {loading && <RefreshCw className="h-3 w-3 animate-spin text-zinc-600 ml-auto" />}
       </button>
+      {isExpanded && error && (
+        <div className="px-4 py-1 text-xs text-red-400" style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}>{error}</div>
+      )}
       {isExpanded &&
         children.map((child) =>
           child.isDirectory ? (
@@ -126,17 +131,29 @@ function SkillFolder({ skill, isExpanded, selectedPath, onToggle, onSelectFile }
   const [loaded, setLoaded] = useState(false);
   const isBuiltin = skill.source === "builtin";
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (isExpanded && !loaded) {
+    if (!isExpanded || loaded) return;
+    let cancelled = false;
+    (async () => {
       setLoading(true);
-      listDirectory(skill.path)
-        .then((f) => {
+      setError(null);
+      try {
+        const f = await listDirectory(skill.path);
+        if (!cancelled) {
           setFiles(f);
           setLoaded(true);
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [isExpanded, loaded, skill.path]);
 
   return (
@@ -154,6 +171,9 @@ function SkillFolder({ skill, isExpanded, selectedPath, onToggle, onSelectFile }
         <span className="truncate text-zinc-300">{skill.name}</span>
         {loading && <RefreshCw className="h-3 w-3 animate-spin text-zinc-600 ml-auto" />}
       </button>
+      {isExpanded && error && (
+        <div className="px-4 py-1 text-xs text-red-400">{error}</div>
+      )}
       {isExpanded && loaded && (
         <div>
           {files.map((file) =>
