@@ -90,11 +90,12 @@ export async function getSession(id: string): Promise<SessionDetail> {
  */
 export function getSessionType(
   meta?: { key?: string }
-): "main" | "subagent" | "cron" | "unknown" {
+): "main" | "subagent" | "cron" | "slash" | "unknown" {
   const key = meta?.key || "";
   if (key === "agent:main:main") return "main";
   if (key.includes(":subagent:")) return "subagent";
   if (key.includes(":cron:")) return "cron";
+  if (key.includes(":slash:") || key.includes(":telegram:slash:")) return "slash";
   return "unknown";
 }
 

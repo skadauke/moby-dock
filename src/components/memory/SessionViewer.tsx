@@ -103,7 +103,9 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
         ? "Subagent"
         : sessionType === "cron"
           ? "Cron"
-          : "Session";
+          : sessionType === "slash"
+            ? "Slash"
+            : "Session";
   const typeBadgeClass =
     sessionType === "main"
       ? "border-blue-700 text-blue-400"
@@ -111,7 +113,9 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
         ? "border-purple-700 text-purple-400"
         : sessionType === "cron"
           ? "border-amber-700 text-amber-400"
-          : "border-zinc-700 text-zinc-400";
+          : sessionType === "slash"
+            ? "border-green-700 text-green-400"
+            : "border-zinc-700 text-zinc-400";
 
   // Show the latest N messages (paginated from end)
   const startIdx = Math.max(0, messages.length - visibleCount);
@@ -145,6 +149,11 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
         <span className="text-xs text-zinc-500">
           {totalCount} message{totalCount !== 1 ? "s" : ""}
         </span>
+        {sessionInfo?.meta?.key && (
+          <span className="text-[10px] text-zinc-600 font-mono ml-auto truncate max-w-[200px]" title={sessionInfo.meta.key}>
+            {sessionInfo.meta.key}
+          </span>
+        )}
       </div>
 
       <div

@@ -387,18 +387,25 @@ export function MemoryClient() {
                         ? "Sub"
                         : st === "cron"
                           ? "Cron"
-                          : "?";
+                          : st === "slash"
+                            ? "Slash"
+                            : "Other";
                   const typeBadgeClass =
                     st === "main"
                       ? "border-blue-800 text-blue-400"
                       : st === "subagent"
                         ? "border-purple-800 text-purple-500"
-                        : "border-amber-800 text-amber-500";
+                        : st === "cron"
+                          ? "border-amber-800 text-amber-500"
+                          : st === "slash"
+                            ? "border-green-800 text-green-500"
+                            : "border-zinc-700 text-zinc-500";
 
                   return (
                     <button
                       key={s.id}
                       onClick={() => handleSelectSession(s)}
+                      title={s.meta?.key || s.id}
                       className={`flex items-center gap-1.5 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
                         view.kind === "session" && view.id === s.id
                           ? "bg-zinc-800 text-zinc-200"
