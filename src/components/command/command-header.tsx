@@ -31,36 +31,40 @@ export function CommandHeader({
 }: CommandHeaderProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPinging, setIsPinging] = useState(false);
-  const [pingSuccess, setPingSuccess] = useState(false);
-  const [pingError, setPingError] = useState<string | null>(null);
+  const [pingResult, setPingResult] = useState<{ type: "success" | "info" | "error"; message: string } | null>(null);
   const log = useLogger();
   
   // Default creator for new tasks (could be enhanced with session info later)
   const defaultCreator: Creator = "STEPHAN";
 
-  // Ping Moby - send wake event to check Ready queue
-  const pingMoby = useCallback(async () => {
+  // Notify Moby - check Ready queue and send task details via Gateway
+  const notifyMoby = useCallback(async () => {
     setIsPinging(true);
-    setPingSuccess(false);
-    setPingError(null);
-    log.info("Ping Moby initiated");
+    setPingResult(null);
+    log.info("Notify Moby initiated");
     
     try {
       const res = await fetch("/api/gateway/ping", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to ping Moby");
+        throw new Error(data.error || "Failed to notify Moby");
       }
-      setPingSuccess(true);
-      log.info("Ping Moby succeeded");
-      // Reset success indicator after 2 seconds
-      setTimeout(() => setPingSuccess(false), 2000);
+      
+      if (data.notified) {
+        setPingResult({ type: "success", message: `Moby notified (${data.taskCount} task${data.taskCount > 1 ? "s" : ""})` });
+        log.info("Moby notified", { taskCount: data.taskCount });
+      } else {
+        setPingResult({ type: "info", message: data.reason || "Nothing to do" });
+        log.info("No tasks to notify about");
+      }
+      
+      setTimeout(() => setPingResult(null), 3000);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      log.error("Ping Moby failed", { error: errorMsg });
-      setPingError(errorMsg);
-      // Clear error after 3 seconds
-      setTimeout(() => setPingError(null), 3000);
+      log.error("Notify Moby failed", { error: errorMsg });
+      setPingResult({ type: "error", message: errorMsg });
+      setTimeout(() => setPingResult(null), 4000);
     } finally {
       setIsPinging(false);
     }
@@ -162,19 +166,21 @@ export function CommandHeader({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={pingMoby}
+                onClick={notifyMoby}
                 disabled={isPinging}
                 className={`h-8 px-3 ${
-                  pingSuccess 
-                    ? "text-green-400 bg-green-500/10" 
-                    : pingError
+                  pingResult?.type === "success"
+                    ? "text-green-400 bg-green-500/10"
+                    : pingResult?.type === "info"
+                    ? "text-yellow-400 bg-yellow-500/10"
+                    : pingResult?.type === "error"
                     ? "text-red-400 bg-red-500/10"
                     : "text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10"
                 }`}
-                title={pingError || "Ping Moby to check Ready queue"}
+                title={pingResult?.message || "Notify Moby about ready tasks"}
               >
                 <Zap className={`h-4 w-4 mr-1.5 ${isPinging ? "animate-pulse" : ""}`} />
-                {pingSuccess ? "Pinged!" : pingError ? "Failed" : "Ping Moby"}
+                {pingResult?.message || "Notify Moby"}
               </Button>
               {onRefresh && (
                 <Button
