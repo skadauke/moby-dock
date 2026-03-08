@@ -14,6 +14,8 @@ const SECRETS_PATH = '~/.openclaw/credentials/secrets.json';
 
 /**
  * Read the vault file from the file server, migrating v2 → v3 if needed.
+ * If migration occurs, the v3 format is persisted back to disk immediately
+ * so that UUIDs remain stable across reads.
  */
 export async function readVault(): Promise<VaultFile> {
   const res = await fetch(
@@ -30,7 +32,16 @@ export async function readVault(): Promise<VaultFile> {
 
   const { content } = await res.json();
   const parsed = JSON.parse(content);
-  return migrateV2toV3(parsed);
+
+  // Check if already v3
+  if (parsed && typeof parsed === 'object' && parsed.version === 3 && Array.isArray(parsed.items)) {
+    return parsed as VaultFile;
+  }
+
+  // Migration needed — convert and persist immediately so IDs are stable
+  const vault = migrateV2toV3(parsed);
+  await writeVault(vault);
+  return vault;
 }
 
 /**

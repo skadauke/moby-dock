@@ -163,8 +163,15 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     setSaving(true);
     setError(null);
     try {
+      // Validate name
+      if (!name.trim()) {
+        setError("Name is required");
+        setSaving(false);
+        return;
+      }
+
       // Build body from form values
-      const body: Record<string, unknown> = { name, tags };
+      const body: Record<string, unknown> = { name: name.trim(), tags };
 
       // Top-level mapped keys
       const topLevelMap: Record<string, string> = {
@@ -523,13 +530,7 @@ function FieldRow({
 
   // Secret field
   if (isSecret) {
-    const displayValue = isCreate
-      ? value
-      : isRevealed
-        ? revealedValue ?? value
-        : hasSecretValue || value
-          ? "••••••••••••••••"
-          : "";
+    const showMasked = !isCreate && !isRevealed && hasSecretValue;
 
     return (
       <div className="space-y-1">
@@ -540,13 +541,21 @@ function FieldRow({
         <div className="flex items-center gap-1">
           <Input
             type={isCreate || isRevealed ? "text" : "password"}
-            value={isCreate ? value : isRevealed ? revealedValue ?? "" : ""}
+            value={
+              isCreate
+                ? value
+                : isRevealed
+                  ? revealedValue ?? ""
+                  : showMasked
+                    ? "••••••••••••"
+                    : ""
+            }
             onChange={(e) => onChange(e.target.value)}
             placeholder={isCreate ? field.placeholder || "Enter value…" : ""}
             readOnly={!isCreate && !isRevealed}
             className={cn(
               "bg-zinc-800 border-zinc-700 h-8 text-sm font-mono flex-1",
-              !isCreate && !isRevealed && hasSecretValue && "text-zinc-500",
+              showMasked && "text-zinc-500",
             )}
           />
           {!isCreate && (
