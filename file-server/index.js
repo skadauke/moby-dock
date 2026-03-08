@@ -25,11 +25,15 @@ const ALLOWED_PATHS = [
   `${HOME}/.openclaw`,       // OpenClaw config
   `${HOME}/.clawdbot`,       // Legacy clawdbot config (if needed)
   `${HOME}/openclaw/skills`, // Built-in skills (read-only)
+  `${HOME}/.openclaw/media`, // Media files (read-only)
+  `${HOME}/.clawdbot/media`, // Legacy media files (read-only)
 ];
 
 // Read-only paths — writes/deletes blocked
 const READ_ONLY_PATHS = [
   `${HOME}/openclaw/skills`,
+  `${HOME}/.openclaw/media`,
+  `${HOME}/.clawdbot/media`,
 ];
 
 // Middleware
@@ -184,6 +188,54 @@ app.get('/files/list', authenticate, async (req, res) => {
   }
 });
 
+// GET /files/raw?path=<filepath> — Serve raw binary with correct Content-Type (for media playback)
+app.get('/files/raw', authenticate, async (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) {
+    return res.status(400).json({ error: 'Path is required' });
+  }
+
+  if (!isPathAllowed(filePath)) {
+    return res.status(403).json({ error: 'Path not allowed' });
+  }
+
+  try {
+    const resolved = resolvePath(filePath);
+    const stat = await fs.stat(resolved);
+    const ext = path.extname(resolved).toLowerCase();
+    
+    // MIME type mapping
+    const mimeTypes = {
+      '.ogg': 'audio/ogg',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.m4a': 'audio/mp4',
+      '.webm': 'audio/webm',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.mp4': 'video/mp4',
+      '.pdf': 'application/pdf',
+    };
+    
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    
+    const fsSync = require('fs');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    fsSync.createReadStream(resolved).pipe(res);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    console.error('Raw file read error:', err);
+    res.status(500).json({ error: 'Failed to read file' });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', allowedPaths: ALLOWED_PATHS });
@@ -301,6 +353,26 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
       return false;
     });
     
+    // Helper: read first message timestamp from a JSONL session file
+    async function getFirstMessageTimestamp(filePath) {
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        const lines = content.split('\n');
+        // Only scan first 20 lines for performance
+        for (let i = 0; i < Math.min(lines.length, 20); i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          try {
+            const entry = JSON.parse(line);
+            if (entry.type === 'message' && entry.timestamp) {
+              return entry.timestamp;
+            }
+          } catch { /* skip malformed */ }
+        }
+      } catch { /* ignore read errors */ }
+      return null;
+    }
+
     // Track which session IDs we've already seen (prefer .jsonl over .reset)
     const seenIds = new Set();
     const sessions = [];
@@ -309,7 +381,8 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
     for (const file of sessionFiles.filter(f => f.endsWith('.jsonl'))) {
       const sessionId = file.replace('.jsonl', '');
       seenIds.add(sessionId);
-      const stat = await fs.stat(path.join(SESSIONS_DIR, file));
+      const fullPath = path.join(SESSIONS_DIR, file);
+      const stat = await fs.stat(fullPath);
       
       let meta = null;
       for (const [key, val] of Object.entries(data)) {
@@ -319,11 +392,14 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
         }
       }
       
+      const startedAt = await getFirstMessageTimestamp(fullPath);
+      
       sessions.push({
         id: sessionId,
         file,
         size: stat.size,
         modifiedAt: stat.mtime.toISOString(),
+        startedAt,
         meta,
       });
     }
@@ -337,7 +413,8 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
       if (seenIds.has(sessionId)) continue;
       seenIds.add(sessionId);
       
-      const stat = await fs.stat(path.join(SESSIONS_DIR, file));
+      const fullPath = path.join(SESSIONS_DIR, file);
+      const stat = await fs.stat(fullPath);
       
       let meta = null;
       for (const [key, val] of Object.entries(data)) {
@@ -347,11 +424,14 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
         }
       }
       
+      const startedAt = await getFirstMessageTimestamp(fullPath);
+      
       sessions.push({
         id: sessionId,
         file,
         size: stat.size,
         modifiedAt: stat.mtime.toISOString(),
+        startedAt,
         meta,
         isReset: true,
       });
