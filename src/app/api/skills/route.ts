@@ -8,14 +8,16 @@
  */
 
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { checkApiAuth } from "@/lib/api-auth";
 import { Logger } from "next-axiom";
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "https://files.skadauke.dev";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 
-const HOME = process.env.HOME_DIR || "/Users/skadauke";
+const HOME = process.env.HOME_DIR || process.env.HOME;
+if (!HOME) {
+  throw new Error("HOME_DIR or HOME environment variable is required");
+}
 const CUSTOM_SKILLS_DIR = `${HOME}/.openclaw/skills`;
 const BUILTIN_SKILLS_DIR = `${HOME}/openclaw/skills`;
 
@@ -151,9 +153,9 @@ async function listSkillsFromDir(
 export async function GET() {
   const log = new Logger({ source: "api/skills" });
 
-  // Check authentication
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) {
+  // Check authentication (session or Bearer token)
+  const authResult = await checkApiAuth();
+  if (!authResult.authenticated) {
     log.warn("Unauthorized skills list attempt");
     await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

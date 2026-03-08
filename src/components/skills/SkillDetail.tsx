@@ -107,15 +107,19 @@ export function SkillDetail({ skill, onClose }: Props) {
     }
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = async () => {
     if (!selectedFile || isReadOnly) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await writeFile(selectedFile, editedContent);
       setFileContent(editedContent);
       setIsDirty(false);
-    } catch {
-      // Could show a toast
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setTimeout(() => setSaveError(null), 4000);
     } finally {
       setSaving(false);
     }
@@ -284,6 +288,9 @@ export function SkillDetail({ skill, onClose }: Props) {
                         )}
                         Save
                       </Button>
+                    )}
+                    {saveError && (
+                      <span className="text-xs text-red-400">{saveError}</span>
                     )}
                     {isReadOnly && (
                       <Badge variant="secondary" className="text-[10px] bg-amber-500/15 text-amber-400">
