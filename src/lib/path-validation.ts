@@ -7,6 +7,7 @@
 
 import { homedir } from 'os';
 import { resolve, normalize } from 'path';
+import { realpathSync, existsSync } from 'fs';
 
 /** Home directory - use HOME_DIR env var (set on Vercel) or OS homedir */
 const HOME = process.env.HOME_DIR || homedir();
@@ -56,13 +57,37 @@ export function validateFilePath(path: string): { valid: boolean; error?: string
   const expanded = expandTilde(path);
   const normalized = normalize(expanded);
 
-  // Check if path is under an allowed base directory
+  // Resolve symlinks to get the canonical path.
+  // If the full path doesn't exist yet, resolve the closest existing ancestor.
+  let canonical: string;
+  if (existsSync(normalized)) {
+    canonical = realpathSync(normalized);
+  } else {
+    // Walk up to find an existing ancestor, then append the remaining segments
+    const parts = normalized.split('/');
+    let existing = '/';
+    let i = 1;
+    for (; i < parts.length; i++) {
+      const candidate = parts.slice(0, i + 1).join('/');
+      if (!existsSync(candidate)) break;
+      existing = candidate;
+    }
+    const resolved = realpathSync(existing);
+    const remainder = parts.slice(i).join('/');
+    canonical = remainder ? normalize(resolved + '/' + remainder) : resolved;
+  }
+
+  // Check if canonical path is under an allowed base directory (also resolved)
   const home = HOME;
   const allowedPaths = ALLOWED_BASE_DIRS.map(dir => expandTilde(dir));
   
   const isAllowed = allowedPaths.some(allowedPath => {
     const normalizedAllowed = normalize(allowedPath);
-    return normalized === normalizedAllowed || normalized.startsWith(normalizedAllowed + '/');
+    // Resolve symlinks on the allowed directory too
+    const canonicalAllowed = existsSync(normalizedAllowed)
+      ? realpathSync(normalizedAllowed)
+      : normalizedAllowed;
+    return canonical === canonicalAllowed || canonical.startsWith(canonicalAllowed + '/');
   });
 
   if (!isAllowed) {
@@ -72,13 +97,13 @@ export function validateFilePath(path: string): { valid: boolean; error?: string
     };
   }
 
-  // Double-check no traversal after normalization
-  const relativeTohome = normalized.slice(home.length);
+  // Double-check no traversal after resolution
+  const relativeTohome = canonical.slice(home.length);
   if (relativeTohome.includes('..')) {
     return { valid: false, error: 'Path traversal detected after normalization' };
   }
 
-  return { valid: true, normalizedPath: normalized };
+  return { valid: true, normalizedPath: canonical };
 }
 
 /**
