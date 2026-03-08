@@ -31,10 +31,13 @@ import {
   Save,
   Play,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CREDENTIAL_TYPES, type FieldSchema } from "@/lib/vault/schemas";
-import type { VaultItemType, MaskedVaultItem } from "@/lib/vault/types";
+import type { VaultItemType, MaskedVaultItem, TestConfig } from "@/lib/vault/types";
 import { getTypeIcon } from "./VaultList";
 import {
   ExpiryBadge,
@@ -42,6 +45,51 @@ import {
   getExpiryStatus,
   getTestStatus,
 } from "./VaultStatusBadge";
+
+// ── Payment Card Utilities ──────────────────────────────────────────
+
+function detectCardBrand(number: string): string {
+  const n = number.replace(/\s/g, "");
+  if (/^3[47]/.test(n)) return "Amex";
+  if (/^4/.test(n)) return "Visa";
+  if (/^5[1-5]/.test(n)) return "Mastercard";
+  if (/^6(?:011|5)/.test(n)) return "Discover";
+  return "Other";
+}
+
+function luhnCheck(number: string): boolean {
+  const n = number.replace(/\D/g, "");
+  if (n.length < 13) return false;
+  let sum = 0;
+  let alternate = false;
+  for (let i = n.length - 1; i >= 0; i--) {
+    let digit = parseInt(n[i], 10);
+    if (alternate) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    alternate = !alternate;
+  }
+  return sum % 10 === 0;
+}
+
+function formatExpiry(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length > 2) {
+    return digits.slice(0, 2) + "/" + digits.slice(2);
+  }
+  return digits;
+}
+
+function validateCvv(cvv: string, brand: string): string | null {
+  const digits = cvv.replace(/\D/g, "");
+  const required = brand === "Amex" ? 4 : 3;
+  if (digits.length > 0 && digits.length !== required) {
+    return `CVV must be ${required} digits${brand === "Amex" ? " for Amex" : ""}`;
+  }
+  return null;
+}
 
 interface Props {
   item: MaskedVaultItem | null;
@@ -64,6 +112,13 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
+  // Payment card validation
+  const [cardErrors, setCardErrors] = useState<Record<string, string | null>>({});
+
+  // Test config state
+  const [testConfig, setTestConfig] = useState<Partial<TestConfig>>({});
+  const [testConfigOpen, setTestConfigOpen] = useState(false);
+
   // UI state
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
@@ -80,6 +135,8 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
       setValues({});
       setName("");
       setTags([]);
+      setTestConfig({});
+      setTestConfigOpen(false);
       setRevealed({});
       setRevealedKeys(new Set());
       return;
@@ -108,12 +165,48 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     setValues(vals);
     setName(item.name);
     setTags(item.tags ?? []);
+    setTestConfig(item.test ?? {});
+    setTestConfigOpen(false);
     setRevealed({});
     setRevealedKeys(new Set());
   }, [item, isCreate, schema, type]);
 
   const setField = (key: string, value: string) => {
-    setValues((prev) => ({ ...prev, [key]: value }));
+    setValues((prev) => {
+      const next = { ...prev, [key]: value };
+
+      // Payment card auto-detection and formatting
+      if (type === "payment_card") {
+        if (key === "number") {
+          const brand = detectCardBrand(value);
+          next.brand = brand;
+        }
+        if (key === "expiry") {
+          next[key] = formatExpiry(value);
+          return next;
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handleCardBlur = (key: string) => {
+    if (type !== "payment_card") return;
+    if (key === "number") {
+      const num = values.number ?? "";
+      const digits = num.replace(/\D/g, "");
+      if (digits.length > 0 && !luhnCheck(digits)) {
+        setCardErrors((prev) => ({ ...prev, number: "Invalid card number" }));
+      } else {
+        setCardErrors((prev) => ({ ...prev, number: null }));
+      }
+    }
+    if (key === "cvv") {
+      const brand = values.brand || detectCardBrand(values.number ?? "");
+      const err = validateCvv(values.cvv ?? "", brand);
+      setCardErrors((prev) => ({ ...prev, cvv: err }));
+    }
   };
 
   // Reveal secrets
@@ -163,8 +256,15 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     setSaving(true);
     setError(null);
     try {
+      // Validate name
+      if (!name.trim()) {
+        setError("Name is required");
+        setSaving(false);
+        return;
+      }
+
       // Build body from form values
-      const body: Record<string, unknown> = { name, tags };
+      const body: Record<string, unknown> = { name: name.trim(), tags };
 
       // Top-level mapped keys
       const topLevelMap: Record<string, string> = {
@@ -196,6 +296,11 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
       }
 
       if (Object.keys(fields).length > 0) body.fields = fields;
+
+      // Include test config if this type is testable and config is filled
+      if (schema.testable && testConfig.url && testConfig.method && testConfig.expectStatus) {
+        body.test = testConfig;
+      }
 
       if (isCreate) {
         body.type = type;
@@ -338,8 +443,130 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
               onCopy={() => copyValue(field.key)}
               isCreate={isCreate}
               hasSecretValue={item?.secretFieldKeys?.includes(field.key) ?? false}
+              onBlur={() => handleCardBlur(field.key)}
+              error={cardErrors[field.key] ?? undefined}
+              readOnlyOverride={type === "payment_card" && field.key === "brand" ? true : undefined}
             />
           ))}
+
+          {/* Test Configuration (for testable types) */}
+          {schema.testable && (
+            <div className="space-y-2 border border-zinc-800 rounded-md">
+              <button
+                type="button"
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+                onClick={() => setTestConfigOpen(!testConfigOpen)}
+              >
+                {testConfigOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                <FlaskConical className="h-3.5 w-3.5" />
+                Test Configuration
+                {testConfig.url && (
+                  <Badge variant="secondary" className="text-[10px] bg-zinc-800 ml-auto">
+                    Configured
+                  </Badge>
+                )}
+              </button>
+              {testConfigOpen && (
+                <div className="px-3 pb-3 space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-zinc-400">Test URL</Label>
+                    <Input
+                      value={testConfig.url ?? ""}
+                      onChange={(e) =>
+                        setTestConfig((prev) => ({ ...prev, url: e.target.value }))
+                      }
+                      placeholder="https://api.example.com/v1/me"
+                      className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Method</Label>
+                      <Select
+                        value={testConfig.method ?? "GET"}
+                        onValueChange={(v) =>
+                          setTestConfig((prev) => ({
+                            ...prev,
+                            method: v as TestConfig["method"],
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="bg-zinc-800 border-zinc-700 h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-800 border-zinc-700">
+                          <SelectItem value="GET">GET</SelectItem>
+                          <SelectItem value="POST">POST</SelectItem>
+                          <SelectItem value="PUT">PUT</SelectItem>
+                          <SelectItem value="HEAD">HEAD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Expected Status</Label>
+                      <Input
+                        value={
+                          testConfig.expectStatus
+                            ? Array.isArray(testConfig.expectStatus)
+                              ? testConfig.expectStatus.join(", ")
+                              : String(testConfig.expectStatus)
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const nums = e.target.value
+                            .split(",")
+                            .map((s) => parseInt(s.trim(), 10))
+                            .filter((n) => !isNaN(n));
+                          setTestConfig((prev) => ({
+                            ...prev,
+                            expectStatus: nums.length === 1 ? nums[0] : nums.length > 1 ? nums : undefined,
+                          }));
+                        }}
+                        placeholder="200"
+                        className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-zinc-400">
+                      Headers <span className="text-zinc-600">(one per line, Key: Value)</span>
+                    </Label>
+                    <Textarea
+                      value={
+                        testConfig.headers
+                          ? Object.entries(testConfig.headers)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join("\n")
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const headers: Record<string, string> = {};
+                        for (const line of e.target.value.split("\n")) {
+                          const idx = line.indexOf(":");
+                          if (idx > 0) {
+                            headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+                          }
+                        }
+                        setTestConfig((prev) => ({
+                          ...prev,
+                          headers: Object.keys(headers).length > 0 ? headers : undefined,
+                        }));
+                      }}
+                      placeholder={"Authorization: Bearer $VALUE"}
+                      className="bg-zinc-800 border-zinc-700 text-sm min-h-[48px] font-mono"
+                    />
+                    <p className="text-[10px] text-zinc-600">
+                      Use <code className="bg-zinc-800 px-1 rounded">$VALUE</code> as placeholder for the credential value
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tags (if not a schema field) */}
           {!schema.fields.some((f) => f.key === "tags") && (
@@ -447,6 +674,9 @@ function FieldRow({
   onCopy,
   isCreate,
   hasSecretValue,
+  onBlur,
+  error,
+  readOnlyOverride,
 }: {
   field: FieldSchema;
   value: string;
@@ -458,6 +688,9 @@ function FieldRow({
   onCopy: () => void;
   isCreate: boolean;
   hasSecretValue: boolean;
+  onBlur?: () => void;
+  error?: string;
+  readOnlyOverride?: boolean;
 }) {
   const isSecret = field.type === "secret";
 
@@ -523,13 +756,7 @@ function FieldRow({
 
   // Secret field
   if (isSecret) {
-    const displayValue = isCreate
-      ? value
-      : isRevealed
-        ? revealedValue ?? value
-        : hasSecretValue || value
-          ? "••••••••••••••••"
-          : "";
+    const showMasked = !isCreate && !isRevealed && hasSecretValue;
 
     return (
       <div className="space-y-1">
@@ -540,13 +767,23 @@ function FieldRow({
         <div className="flex items-center gap-1">
           <Input
             type={isCreate || isRevealed ? "text" : "password"}
-            value={isCreate ? value : isRevealed ? revealedValue ?? "" : ""}
+            value={
+              isCreate
+                ? value
+                : isRevealed
+                  ? revealedValue ?? ""
+                  : showMasked
+                    ? "••••••••••••"
+                    : ""
+            }
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             placeholder={isCreate ? field.placeholder || "Enter value…" : ""}
             readOnly={!isCreate && !isRevealed}
             className={cn(
               "bg-zinc-800 border-zinc-700 h-8 text-sm font-mono flex-1",
-              !isCreate && !isRevealed && hasSecretValue && "text-zinc-500",
+              showMasked && "text-zinc-500",
+              error && "border-red-500/50",
             )}
           />
           {!isCreate && (
@@ -564,6 +801,7 @@ function FieldRow({
             </>
           )}
         </div>
+        {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
     );
   }
@@ -579,9 +817,16 @@ function FieldRow({
         type={field.type === "date" ? "date" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={field.placeholder}
-        className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+        readOnly={readOnlyOverride}
+        className={cn(
+          "bg-zinc-800 border-zinc-700 h-8 text-sm",
+          readOnlyOverride && "text-zinc-500",
+          error && "border-red-500/50",
+        )}
       />
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }
