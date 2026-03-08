@@ -90,11 +90,7 @@ async function getVaultHash(): Promise<string | null> {
 let lastKnownHash: string | null = null;
 
 /**
- * Write the vault file back to the file server using atomic write pattern.
- *
- * 1. Compute hash of current file for optimistic locking
- * 2. Write to a temporary path first
- * 3. Rename (atomic on POSIX) to the final path
+ * Write the vault file back to the file server with optimistic locking.
  *
  * If the file was modified since the last read, throws a conflict error
  * so the caller can re-read and retry.
@@ -111,42 +107,19 @@ export async function writeVault(vault: VaultFile): Promise<void> {
   }
 
   const content = JSON.stringify(vault, null, 2);
-  const tmpPath = SECRETS_PATH + '.tmp.' + Date.now();
 
-  // Step 1: Write to temp file
-  const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {
+  const res = await fetch(`${FILE_SERVER_URL}/files`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ path: tmpPath, content }),
+    body: JSON.stringify({ path: SECRETS_PATH, content }),
     signal: AbortSignal.timeout(10_000),
   });
 
-  if (!writeRes.ok) {
-    throw new Error(`File server write (temp) returned ${writeRes.status}`);
-  }
-
-  // Step 2: Atomic rename temp → final
-  const renameRes = await fetch(`${FILE_SERVER_URL}/files/rename`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from: tmpPath, to: SECRETS_PATH }),
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!renameRes.ok) {
-    // Attempt cleanup of temp file on failure
-    await fetch(`${FILE_SERVER_URL}/files?path=${encodeURIComponent(tmpPath)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => {});
-    throw new Error(`File server rename returned ${renameRes.status}`);
+  if (!res.ok) {
+    throw new Error(`File server write returned ${res.status}`);
   }
 
   // Update optimistic lock hash after successful write
