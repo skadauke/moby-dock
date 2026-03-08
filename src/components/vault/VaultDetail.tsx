@@ -46,6 +46,51 @@ import {
   getTestStatus,
 } from "./VaultStatusBadge";
 
+// ── Payment Card Utilities ──────────────────────────────────────────
+
+function detectCardBrand(number: string): string {
+  const n = number.replace(/\s/g, "");
+  if (/^3[47]/.test(n)) return "Amex";
+  if (/^4/.test(n)) return "Visa";
+  if (/^5[1-5]/.test(n)) return "Mastercard";
+  if (/^6(?:011|5)/.test(n)) return "Discover";
+  return "Other";
+}
+
+function luhnCheck(number: string): boolean {
+  const n = number.replace(/\D/g, "");
+  if (n.length < 13) return false;
+  let sum = 0;
+  let alternate = false;
+  for (let i = n.length - 1; i >= 0; i--) {
+    let digit = parseInt(n[i], 10);
+    if (alternate) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    alternate = !alternate;
+  }
+  return sum % 10 === 0;
+}
+
+function formatExpiry(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length > 2) {
+    return digits.slice(0, 2) + "/" + digits.slice(2);
+  }
+  return digits;
+}
+
+function validateCvv(cvv: string, brand: string): string | null {
+  const digits = cvv.replace(/\D/g, "");
+  const required = brand === "Amex" ? 4 : 3;
+  if (digits.length > 0 && digits.length !== required) {
+    return `CVV must be ${required} digits${brand === "Amex" ? " for Amex" : ""}`;
+  }
+  return null;
+}
+
 interface Props {
   item: MaskedVaultItem | null;
   /** When set, we're in create mode for this type */
@@ -66,6 +111,9 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   const [name, setName] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+
+  // Payment card validation
+  const [cardErrors, setCardErrors] = useState<Record<string, string | null>>({});
 
   // Test config state
   const [testConfig, setTestConfig] = useState<Partial<TestConfig>>({});
@@ -124,7 +172,41 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   }, [item, isCreate, schema, type]);
 
   const setField = (key: string, value: string) => {
-    setValues((prev) => ({ ...prev, [key]: value }));
+    setValues((prev) => {
+      const next = { ...prev, [key]: value };
+
+      // Payment card auto-detection and formatting
+      if (type === "payment_card") {
+        if (key === "number") {
+          const brand = detectCardBrand(value);
+          next.brand = brand;
+        }
+        if (key === "expiry") {
+          next[key] = formatExpiry(value);
+          return next;
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handleCardBlur = (key: string) => {
+    if (type !== "payment_card") return;
+    if (key === "number") {
+      const num = values.number ?? "";
+      const digits = num.replace(/\D/g, "");
+      if (digits.length > 0 && !luhnCheck(digits)) {
+        setCardErrors((prev) => ({ ...prev, number: "Invalid card number" }));
+      } else {
+        setCardErrors((prev) => ({ ...prev, number: null }));
+      }
+    }
+    if (key === "cvv") {
+      const brand = values.brand || detectCardBrand(values.number ?? "");
+      const err = validateCvv(values.cvv ?? "", brand);
+      setCardErrors((prev) => ({ ...prev, cvv: err }));
+    }
   };
 
   // Reveal secrets
@@ -361,6 +443,9 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
               onCopy={() => copyValue(field.key)}
               isCreate={isCreate}
               hasSecretValue={item?.secretFieldKeys?.includes(field.key) ?? false}
+              onBlur={() => handleCardBlur(field.key)}
+              error={cardErrors[field.key] ?? undefined}
+              readOnlyOverride={type === "payment_card" && field.key === "brand" ? true : undefined}
             />
           ))}
 
@@ -589,6 +674,9 @@ function FieldRow({
   onCopy,
   isCreate,
   hasSecretValue,
+  onBlur,
+  error,
+  readOnlyOverride,
 }: {
   field: FieldSchema;
   value: string;
@@ -600,6 +688,9 @@ function FieldRow({
   onCopy: () => void;
   isCreate: boolean;
   hasSecretValue: boolean;
+  onBlur?: () => void;
+  error?: string;
+  readOnlyOverride?: boolean;
 }) {
   const isSecret = field.type === "secret";
 
@@ -686,11 +777,13 @@ function FieldRow({
                     : ""
             }
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             placeholder={isCreate ? field.placeholder || "Enter value…" : ""}
             readOnly={!isCreate && !isRevealed}
             className={cn(
               "bg-zinc-800 border-zinc-700 h-8 text-sm font-mono flex-1",
               showMasked && "text-zinc-500",
+              error && "border-red-500/50",
             )}
           />
           {!isCreate && (
@@ -708,6 +801,7 @@ function FieldRow({
             </>
           )}
         </div>
+        {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
     );
   }
@@ -723,9 +817,16 @@ function FieldRow({
         type={field.type === "date" ? "date" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={field.placeholder}
-        className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+        readOnly={readOnlyOverride}
+        className={cn(
+          "bg-zinc-800 border-zinc-700 h-8 text-sm",
+          readOnlyOverride && "text-zinc-500",
+          error && "border-red-500/50",
+        )}
       />
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }
