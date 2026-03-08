@@ -17,6 +17,7 @@ const ALLOWED_BASE_DIRS = [
   '~/clawd',
   '~/.openclaw',
   '~/.clawdbot',  // Legacy
+  '~/openclaw',   // Built-in skills (read-only)
 ];
 
 /** Dangerous path segments that indicate traversal attempts */
