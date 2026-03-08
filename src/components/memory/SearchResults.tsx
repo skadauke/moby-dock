@@ -7,8 +7,8 @@ interface SearchResultsProps {
   query: string;
   results: MemorySearchResult[];
   total: number;
-  onSelectFile: (path: string) => void;
-  onSelectSession: (id: string) => void;
+  onSelectFile: (path: string, query: string) => void;
+  onSelectSession: (id: string, query: string) => void;
 }
 
 /**
@@ -55,9 +55,9 @@ export function SearchResults({
               className="w-full text-left p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800/70 transition-colors"
               onClick={() => {
                 if (isSession && sessionId) {
-                  onSelectSession(sessionId);
+                  onSelectSession(sessionId, query);
                 } else {
-                  onSelectFile(r.path);
+                  onSelectFile(r.path, query);
                 }
               }}
             >

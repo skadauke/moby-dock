@@ -39,8 +39,8 @@ const HOME = process.env.NEXT_PUBLIC_HOME_DIR || "/Users/skadauke";
 // ── Types ───────────────────────────────────────────────────────────
 type ViewMode =
   | { kind: "empty" }
-  | { kind: "file"; path: string; fullPath: string }
-  | { kind: "session"; id: string; info?: SessionInfo }
+  | { kind: "file"; path: string; fullPath: string; searchQuery?: string }
+  | { kind: "session"; id: string; info?: SessionInfo; highlightText?: string }
   | { kind: "search"; query: string; results: MemorySearchResult[]; total: number };
 
 interface MemoryFileEntry {
@@ -224,18 +224,24 @@ export function MemoryClient() {
 
   // ── Navigate from search results ──────────────────────────────────
   const handleSearchSelectFile = useCallback(
-    (path: string) => {
+    (path: string, query?: string) => {
       // path from search is like "MEMORY.md" or "memory/2026-03-08.md"
       const fullPath = `${HOME}/clawd/${path}`;
-      loadFile(path, fullPath);
+      loadFile(path, fullPath).then(() => {
+        if (query) {
+          setView((prev) =>
+            prev.kind === "file" ? { ...prev, searchQuery: query } : prev
+          );
+        }
+      });
     },
     [loadFile]
   );
 
   const handleSearchSelectSession = useCallback(
-    (id: string) => {
+    (id: string, query?: string) => {
       const info = sessions.find((s) => s.id === id);
-      setView({ kind: "session", id, info });
+      setView({ kind: "session", id, info, highlightText: query });
     },
     [sessions]
   );
@@ -477,6 +483,7 @@ export function MemoryClient() {
                 title="Reload (⌘R)"
               >
                 <RotateCcw className="h-4 w-4" />
+                <span className="ml-1">Reload</span>
                 <span className="ml-1 text-xs text-zinc-500">⌘R</span>
               </Button>
               <Button
@@ -510,9 +517,10 @@ export function MemoryClient() {
               filename={displayName}
               onChange={setContent}
               onSave={saveFile}
+              searchQuery={view.searchQuery}
             />
           ) : view.kind === "session" ? (
-            <SessionViewer sessionId={view.id} sessionInfo={view.info} />
+            <SessionViewer sessionId={view.id} sessionInfo={view.info} highlightText={view.highlightText} />
           ) : view.kind === "search" ? (
             <SearchResults
               query={view.query}
