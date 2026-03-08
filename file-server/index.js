@@ -189,6 +189,203 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', allowedPaths: ALLOWED_PATHS });
 });
 
+// ─── Memory Search Endpoints ────────────────────────────────────────
+
+const MEMORY_DB = `${HOME}/.openclaw/memory/main.sqlite`;
+const SESSIONS_DIR = `${HOME}/.openclaw/agents/main/sessions`;
+
+// Lazy-load better-sqlite3
+let _db = null;
+function getMemoryDb() {
+  if (_db) return _db;
+  try {
+    const Database = require('better-sqlite3');
+    _db = new Database(MEMORY_DB, { readonly: true });
+    return _db;
+  } catch (err) {
+    console.error('Failed to open memory DB:', err.message);
+    return null;
+  }
+}
+
+// GET /memory/search?q=<query>&limit=50
+app.get('/memory/search', authenticate, async (req, res) => {
+  const query = req.query.q;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  
+  if (!query || !query.trim()) {
+    return res.status(400).json({ error: 'Query parameter q is required' });
+  }
+  
+  const db = getMemoryDb();
+  if (!db) {
+    return res.status(500).json({ error: 'Memory database not available' });
+  }
+  
+  try {
+    // FTS5 search with snippet highlighting
+    const stmt = db.prepare(`
+      SELECT 
+        id, path, source, start_line, end_line,
+        snippet(chunks_fts, 0, '<mark>', '</mark>', '…', 40) as snippet,
+        rank
+      FROM chunks_fts 
+      WHERE text MATCH ?
+      ORDER BY rank
+      LIMIT ?
+    `);
+    
+    const results = stmt.all(query, limit);
+    res.json({ results, total: results.length, query });
+  } catch (err) {
+    // FTS5 query syntax error — try wrapping in quotes for literal search
+    try {
+      const stmt = db.prepare(`
+        SELECT 
+          id, path, source, start_line, end_line,
+          snippet(chunks_fts, 0, '<mark>', '</mark>', '…', 40) as snippet,
+          rank
+        FROM chunks_fts 
+        WHERE text MATCH ?
+        ORDER BY rank
+        LIMIT ?
+      `);
+      const results = stmt.all(`"${query.replace(/"/g, '""')}"`, limit);
+      res.json({ results, total: results.length, query });
+    } catch (err2) {
+      res.status(400).json({ error: 'Search failed', details: err2.message });
+    }
+  }
+});
+
+// GET /memory/status — Index status
+app.get('/memory/status', authenticate, async (req, res) => {
+  const db = getMemoryDb();
+  if (!db) {
+    return res.status(500).json({ error: 'Memory database not available' });
+  }
+  
+  try {
+    const stats = db.prepare(`
+      SELECT source, COUNT(*) as chunks, COUNT(DISTINCT path) as files
+      FROM chunks GROUP BY source
+    `).all();
+    
+    const totalFiles = db.prepare('SELECT COUNT(*) as count FROM files').get();
+    const meta = db.prepare('SELECT value FROM meta WHERE key = ?').get('memory_index_meta_v1');
+    
+    res.json({
+      totalFiles: totalFiles.count,
+      sources: stats,
+      meta: meta ? JSON.parse(meta.value) : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /memory/sessions — List sessions with metadata
+app.get('/memory/sessions', authenticate, async (req, res) => {
+  try {
+    const sessionsFile = path.join(SESSIONS_DIR, 'sessions.json');
+    const data = JSON.parse(await fs.readFile(sessionsFile, 'utf-8'));
+    
+    // Get session files with sizes
+    const files = await fs.readdir(SESSIONS_DIR);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && !f.includes('.deleted') && !f.includes('.reset'));
+    
+    const sessions = [];
+    for (const file of jsonlFiles) {
+      const sessionId = file.replace('.jsonl', '');
+      const stat = await fs.stat(path.join(SESSIONS_DIR, file));
+      
+      // Find metadata from sessions.json
+      let meta = null;
+      for (const [key, val] of Object.entries(data)) {
+        if (val.sessionId === sessionId) {
+          meta = { key, ...val };
+          break;
+        }
+      }
+      
+      sessions.push({
+        id: sessionId,
+        file,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        meta,
+      });
+    }
+    
+    // Sort by modified date, newest first
+    sessions.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
+    res.json({ sessions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /memory/session/:id — Parse session transcript into messages
+app.get('/memory/session/:id', authenticate, async (req, res) => {
+  const sessionId = req.params.id;
+  const filePath = path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  
+  // Security: validate session ID format (UUID only)
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID format' });
+  }
+  
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    const lines = content.split('\n').filter(l => l.trim());
+    
+    const messages = [];
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === 'message' && entry.message) {
+          const { role, content: msgContent } = entry.message;
+          if (role === 'user' || role === 'assistant') {
+            let text = '';
+            if (typeof msgContent === 'string') {
+              text = msgContent;
+            } else if (Array.isArray(msgContent)) {
+              text = msgContent
+                .filter(c => c.type === 'text')
+                .map(c => c.text)
+                .join('\n');
+            }
+            if (text.trim()) {
+              messages.push({
+                role,
+                text: text.substring(0, 10000), // Cap per-message size
+                timestamp: entry.timestamp,
+                id: entry.id,
+              });
+            }
+          }
+        } else if (entry.type === 'compaction') {
+          messages.push({
+            role: 'system',
+            text: '[Session compacted]',
+            timestamp: entry.timestamp,
+            id: entry.id,
+          });
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    
+    res.json({ sessionId, messageCount: messages.length, messages });
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Credential Test Endpoint ───────────────────────────────────────
 // POST /credentials/test — Execute an HTTP probe to verify a credential
 const ALLOWED_PROTOCOLS = ['https:'];

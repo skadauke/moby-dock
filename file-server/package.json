@@ -2,6 +2,7 @@
   "name": "moby-dock-file-server",
   "private": true,
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
     "express": "^4.21.0",
