@@ -51,24 +51,22 @@ export function SessionViewer({ sessionId, sessionInfo }: SessionViewerProps) {
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-    setVisibleCount(PAGE_SIZE);
-
-    getSession(sessionId)
-      .then((data) => {
+    (async () => {
+      setIsLoading(true);
+      setError(null);
+      setVisibleCount(PAGE_SIZE);
+      try {
+        const data = await getSession(sessionId);
         if (cancelled) return;
         setMessages(data.messages);
         setTotalCount(data.messageCount);
-      })
-      .catch((err) => {
+      } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Failed to load session");
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
-
+      }
+    })();
     return () => {
       cancelled = true;
     };
