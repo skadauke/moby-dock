@@ -1,6 +1,7 @@
 'use client';
 
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 
 interface MarkdownProps {
@@ -12,6 +13,7 @@ export function Markdown({ children, className }: MarkdownProps) {
   return (
     <div className={cn('prose prose-sm prose-invert max-w-none', className)}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           // Make links clickable and open in new tab
           a: ({ href, children }) => (
@@ -59,6 +61,29 @@ export function Markdown({ children, className }: MarkdownProps) {
             <blockquote className="border-l-2 border-zinc-600 pl-2 italic text-zinc-400 mb-2 last:mb-0">
               {children}
             </blockquote>
+          ),
+          // Style tables (GFM)
+          table: ({ children }) => (
+            <div className="overflow-x-auto mb-2 last:mb-0">
+              <table className="min-w-full border-collapse text-xs">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="border-b border-zinc-700 bg-zinc-800/50">
+              {children}
+            </thead>
+          ),
+          th: ({ children }) => (
+            <th className="px-2 py-1 text-left font-semibold text-zinc-300">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="px-2 py-1 border-b border-zinc-800 text-zinc-400">
+              {children}
+            </td>
           ),
         }}
       >

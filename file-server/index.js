@@ -292,14 +292,25 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
     
     // Get session files with sizes
     const files = await fs.readdir(SESSIONS_DIR);
-    const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && !f.includes('.deleted') && !f.includes('.reset'));
+    // Include .jsonl files and .reset files (but not .deleted)
+    const sessionFiles = files.filter(f => {
+      if (f.includes('.deleted')) return false;
+      if (f.endsWith('.jsonl')) return true;
+      // Include .reset files: {uuid}.jsonl.reset.{timestamp}
+      if (f.includes('.jsonl.reset.')) return true;
+      return false;
+    });
     
+    // Track which session IDs we've already seen (prefer .jsonl over .reset)
+    const seenIds = new Set();
     const sessions = [];
-    for (const file of jsonlFiles) {
+    
+    // Process .jsonl files first
+    for (const file of sessionFiles.filter(f => f.endsWith('.jsonl'))) {
       const sessionId = file.replace('.jsonl', '');
+      seenIds.add(sessionId);
       const stat = await fs.stat(path.join(SESSIONS_DIR, file));
       
-      // Find metadata from sessions.json
       let meta = null;
       for (const [key, val] of Object.entries(data)) {
         if (val.sessionId === sessionId) {
@@ -314,6 +325,35 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
         size: stat.size,
         modifiedAt: stat.mtime.toISOString(),
         meta,
+      });
+    }
+    
+    // Then process .reset files for sessions not already covered
+    for (const file of sessionFiles.filter(f => f.includes('.jsonl.reset.'))) {
+      // Extract session ID: {uuid}.jsonl.reset.{timestamp}
+      const match = file.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl\.reset\./i);
+      if (!match) continue;
+      const sessionId = match[1];
+      if (seenIds.has(sessionId)) continue;
+      seenIds.add(sessionId);
+      
+      const stat = await fs.stat(path.join(SESSIONS_DIR, file));
+      
+      let meta = null;
+      for (const [key, val] of Object.entries(data)) {
+        if (val.sessionId === sessionId) {
+          meta = { key, ...val };
+          break;
+        }
+      }
+      
+      sessions.push({
+        id: sessionId,
+        file,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        meta,
+        isReset: true,
       });
     }
     
@@ -336,7 +376,18 @@ app.get('/memory/session/:id', authenticate, async (req, res) => {
   }
   
   try {
-    const content = await fs.readFile(filePath, 'utf-8');
+    let actualPath = filePath;
+    try {
+      await fs.access(filePath);
+    } catch {
+      // If the .jsonl file doesn't exist, look for a .reset file
+      const dirFiles = await fs.readdir(SESSIONS_DIR);
+      const resetFile = dirFiles.find(f => f.startsWith(`${sessionId}.jsonl.reset.`));
+      if (resetFile) {
+        actualPath = path.join(SESSIONS_DIR, resetFile);
+      }
+    }
+    const content = await fs.readFile(actualPath, 'utf-8');
     const lines = content.split('\n').filter(l => l.trim());
     
     const messages = [];

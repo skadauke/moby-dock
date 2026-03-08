@@ -44,25 +44,96 @@ function formatSessionDate(info?: SessionInfo): string {
 }
 
 /**
- * Strip internal metadata from message text:
- * - [message_id: ...], [sender_id: ...], etc.
- * - "Conversation info (untrusted metadata):" blocks with JSON
- * - "Sender (untrusted metadata):" blocks
- * - Lines that are just JSON with message_id, sender_id, sender, timestamp
+ * Strip internal metadata from message text.
+ * Removes conversation info blocks, sender blocks, telegram headers,
+ * system exec output, cron tags, media metadata, runtime context, and MEDIA directives.
  */
 function stripMetadata(text: string): string {
-  // Strip [key: value] patterns for known metadata keys
-  let cleaned = text.replace(/\[(?:message_id|sender_id|chat_id|reply_to_message_id|forward_from):\s*[^\]]*\]/gi, "");
+  let cleaned = text;
 
-  // Strip "Conversation info (untrusted metadata):" block and following JSON-like content
+  // Pattern A — Conversation info blocks with fenced JSON
   cleaned = cleaned.replace(
-    /Conversation info \(untrusted metadata\):?\s*\n?(\{[\s\S]*?\}\s*\n?|\s*(?:(?:message_id|sender_id|sender|timestamp|chat_id)[^\n]*\n?)*)/gi,
+    /Conversation info \(untrusted metadata\):?\s*\n```json\n[\s\S]*?\n```\s*/gi,
+    ""
+  );
+  // Pattern A fallback — without fenced JSON (inline or bare JSON)
+  cleaned = cleaned.replace(
+    /Conversation info \(untrusted metadata\):?\s*\n?\{[\s\S]*?\}\s*/gi,
     ""
   );
 
-  // Strip "Sender (untrusted metadata):" blocks
+  // Pattern B — Sender blocks with fenced JSON
   cleaned = cleaned.replace(
-    /Sender \(untrusted metadata\):?\s*[^\n]*\n?/gi,
+    /Sender \(untrusted metadata\):?\s*\n```json\n[\s\S]*?\n```\s*/gi,
+    ""
+  );
+  // Pattern B fallback — without fence
+  cleaned = cleaned.replace(
+    /Sender \(untrusted metadata\):?\s*\n?\{[\s\S]*?\}\s*/gi,
+    ""
+  );
+
+  // Pattern C — Telegram envelope headers
+  // e.g. [Telegram Stephan Kadauke id:8290418965 +3m 2026-01-29 21:27 EST]
+  cleaned = cleaned.replace(
+    /\[Telegram\s+[^\]]*?id:\d+[^\]]*?\]\s*/gi,
+    ""
+  );
+
+  // Pattern D — System exec output
+  // e.g. System (untrusted): [2026-01-29 21:51:24 EST] Exec completed ...
+  cleaned = cleaned.replace(
+    /^System \(untrusted\):.*$/gm,
+    ""
+  );
+
+  // Pattern E — Cron tags
+  // e.g. [cron:f6855a4d-91b5-4e1f-8847-5e88c9f0832f supabase-keepalive]
+  cleaned = cleaned.replace(
+    /\[cron:[0-9a-f-]+\s+[^\]]*?\]\s*/gi,
+    ""
+  );
+
+  // Pattern F — Media attachment metadata
+  // Replace with emoji indicator based on type
+  cleaned = cleaned.replace(
+    /\[media attached:\s*[^\]]*?\(audio\/[^)]*\)[^\]]*?\]\s*/gi,
+    "🎵 Audio message\n"
+  );
+  cleaned = cleaned.replace(
+    /\[media attached:\s*[^\]]*?\(image\/[^)]*\)[^\]]*?\]\s*/gi,
+    "🖼️ Image\n"
+  );
+  cleaned = cleaned.replace(
+    /\[media attached:\s*[^\]]*?\(video\/[^)]*\)[^\]]*?\]\s*/gi,
+    "🎬 Video\n"
+  );
+  cleaned = cleaned.replace(
+    /\[media attached:\s*[^\]]*?\]\s*/gi,
+    "📎 Media attachment\n"
+  );
+
+  // Pattern G — OpenClaw runtime context blocks (multi-line)
+  // Starts with [date] OpenClaw runtime context (internal):
+  // Continues until a blank line or end of text
+  cleaned = cleaned.replace(
+    /\[[^\]]*?\]\s*OpenClaw runtime context \(internal\):[\s\S]*?(?=\n\n|\n[^\s]|$)/gi,
+    ""
+  );
+
+  // Pattern H — MEDIA: directives
+  cleaned = cleaned.replace(
+    /To send an image back, prefer the message tool[^\n]*(?:\n[^\n]*MEDIA:[^\n]*)?/gi,
+    ""
+  );
+  cleaned = cleaned.replace(
+    /^MEDIA:[^\n]*$/gm,
+    ""
+  );
+
+  // Strip [key: value] patterns for known metadata keys
+  cleaned = cleaned.replace(
+    /\[(?:message_id|sender_id|chat_id|reply_to_message_id|forward_from):\s*[^\]]*\]/gi,
     ""
   );
 
@@ -78,10 +149,50 @@ function stripMetadata(text: string): string {
     ""
   );
 
-  // Clean up excessive blank lines left behind
+  // Clean up excessive blank lines left behind and trim
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
 
   return cleaned;
+}
+
+/**
+ * Detect if a "user" message is actually a subagent or cron system message
+ * that should be displayed differently.
+ */
+function detectSystemUserMessage(text: string): { isSystem: boolean; badge?: string; summary?: string } {
+  // Subagent completion events
+  if (/^\[Internal task completion event\]/i.test(text) || /source:\s*subagent/i.test(text)) {
+    const taskMatch = text.match(/task[:\s]+["']?([^"'\n]+)/i);
+    const statusMatch = text.match(/status[:\s]+["']?(\w+)/i);
+    return {
+      isSystem: true,
+      badge: "Subagent",
+      summary: taskMatch
+        ? `${taskMatch[1]}${statusMatch ? ` — ${statusMatch[1]}` : ""}`
+        : "Subagent task completed",
+    };
+  }
+
+  // sourceSession=agent:main:subagent: or sourceTool=subagent_announce
+  if (/sourceSession=agent:main:subagent:/i.test(text) || /sourceTool=subagent_announce/i.test(text)) {
+    return {
+      isSystem: true,
+      badge: "Subagent",
+      summary: "Subagent announcement",
+    };
+  }
+
+  // Cron system messages
+  if (/^System:\s*\[\d{4}-\d{2}-\d{2}\s/i.test(text)) {
+    const taskMatch = text.match(/\]\s*(.+)/);
+    return {
+      isSystem: true,
+      badge: "Cron",
+      summary: taskMatch ? taskMatch[1].slice(0, 100) : "Scheduled task",
+    };
+  }
+
+  return { isSystem: false };
 }
 
 export function SessionViewer({ sessionId, sessionInfo, highlightText }: SessionViewerProps) {
@@ -128,25 +239,24 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
       );
       if (matchIdx >= 0) {
         // Ensure the matched message is visible by adjusting visibleCount
-        // We show messages from startIdx = max(0, messages.length - visibleCount)
-        // We need matchIdx >= startIdx, so visibleCount >= messages.length - matchIdx
-        const neededVisible = messages.length - matchIdx;
+        const neededVisible = matchIdx + 1;
         if (neededVisible > visibleCount) {
           setVisibleCount(Math.min(neededVisible + PAGE_SIZE, messages.length));
         }
         setHighlightedMsgId(messages[matchIdx].id);
-        // Scroll to the highlighted message after render
+        // Scroll to the highlighted message after render — use double rAF for safety
         requestAnimationFrame(() => {
-          const el = document.getElementById(`msg-${messages[matchIdx].id}`);
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            // Flash highlight
-            el.classList.add("ring-2", "ring-yellow-500/60");
-            setTimeout(() => {
-              el.classList.remove("ring-2", "ring-yellow-500/60");
-              setHighlightedMsgId(null);
-            }, 2000);
-          }
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`msg-${messages[matchIdx].id}`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.classList.add("ring-2", "ring-yellow-500/60");
+              setTimeout(() => {
+                el.classList.remove("ring-2", "ring-yellow-500/60");
+                setHighlightedMsgId(null);
+              }, 2000);
+            }
+          });
         });
         return;
       }
@@ -161,7 +271,6 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // Load more when scrolling near bottom (since we now start at top)
     if (
       el.scrollTop + el.clientHeight > el.scrollHeight - 200 &&
       visibleCount < messages.length
@@ -192,7 +301,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
             ? "border-green-700 text-green-400"
             : "border-zinc-700 text-zinc-400";
 
-  // Show first N messages (start from top now)
+  // Show first N messages (start from top)
   const visibleMessages = messages.slice(0, visibleCount);
 
   if (isLoading) {
@@ -224,8 +333,8 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
           {totalCount} message{totalCount !== 1 ? "s" : ""}
         </span>
         {sessionInfo?.meta?.key && (
-          <span className="text-[10px] text-zinc-600 font-mono ml-auto truncate max-w-[200px]" title={sessionInfo.meta.key}>
-            {sessionInfo.meta.key}
+          <span className="text-[10px] text-zinc-600 font-mono ml-auto truncate max-w-[200px]" title={sessionInfo.meta.key as string}>
+            {sessionInfo.meta.key as string}
           </span>
         )}
       </div>
@@ -239,6 +348,31 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
           const cleanText = stripMetadata(msg.text);
           // Skip messages that are only metadata
           if (!cleanText) return null;
+
+          // Check if a "user" message is actually a subagent/cron system message
+          if (msg.role === "user") {
+            const systemCheck = detectSystemUserMessage(msg.text);
+            if (systemCheck.isSystem) {
+              const badgeClass = systemCheck.badge === "Subagent"
+                ? "border-purple-800 text-purple-400"
+                : "border-amber-800 text-amber-400";
+              return (
+                <div key={msg.id} id={`msg-${msg.id}`} className="flex justify-center">
+                  <div className="max-w-lg px-3 py-1.5 rounded bg-zinc-800/50 text-zinc-500 text-xs text-center flex items-center gap-2">
+                    <Badge variant="outline" className={`text-[9px] px-1 py-0 h-4 ${badgeClass}`}>
+                      {systemCheck.badge}
+                    </Badge>
+                    <span>{systemCheck.summary}</span>
+                    {msg.timestamp && (
+                      <span className="text-zinc-600">
+                        {formatTimestamp(msg.timestamp)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+          }
 
           if (msg.role === "system") {
             return (
@@ -286,15 +420,9 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
                     </span>
                   )}
                 </div>
-                {isUser ? (
-                  <div className="text-sm text-zinc-200 whitespace-pre-wrap break-words">
-                    {displayText}
-                  </div>
-                ) : (
-                  <Markdown className="text-sm text-zinc-200 break-words [&_pre]:bg-zinc-900 [&_code]:bg-zinc-900">
-                    {displayText}
-                  </Markdown>
-                )}
+                <Markdown className="text-sm text-zinc-200 break-words [&_pre]:bg-zinc-900 [&_code]:bg-zinc-900">
+                  {displayText}
+                </Markdown>
               </div>
             </div>
           );
