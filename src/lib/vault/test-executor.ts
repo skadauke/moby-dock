@@ -12,6 +12,55 @@ const VALUE_PLACEHOLDER = '$VALUE';
 /** Allowed URL protocols */
 const ALLOWED_PROTOCOLS = ['https:'];
 
+/**
+ * Default domain allowlist for credential testing.
+ * Only these domains (and subdomains) may be contacted during vault tests.
+ * Override via VAULT_TEST_DOMAIN_ALLOWLIST env var (comma-separated).
+ */
+const DEFAULT_DOMAIN_ALLOWLIST = [
+  'api.github.com',
+  'api.openai.com',
+  'api.anthropic.com',
+  'api.telegram.org',
+  'api.stripe.com',
+  'api.sendgrid.com',
+  'api.twilio.com',
+  'api.cloudflare.com',
+  'api.vercel.com',
+  'api.heroku.com',
+  'api.slack.com',
+  'api.linear.app',
+  'api.resend.com',
+  'api.elevenlabs.io',
+  'generativelanguage.googleapis.com',
+  'www.googleapis.com',
+  'oauth2.googleapis.com',
+  'graph.microsoft.com',
+  'login.microsoftonline.com',
+  'hooks.slack.com',
+  'discord.com',
+  'api.notion.com',
+];
+
+function getDomainAllowlist(): string[] {
+  const envOverride = process.env.VAULT_TEST_DOMAIN_ALLOWLIST;
+  if (envOverride) {
+    return envOverride.split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+  }
+  return DEFAULT_DOMAIN_ALLOWLIST;
+}
+
+/**
+ * Check if a hostname matches an allowed domain (exact or subdomain match).
+ */
+function isDomainAllowed(hostname: string): boolean {
+  const allowlist = getDomainAllowlist();
+  const lower = hostname.toLowerCase();
+  return allowlist.some(allowed => {
+    return lower === allowed || lower.endsWith('.' + allowed);
+  });
+}
+
 /** Blocked URL patterns (internal networks, localhost) */
 const BLOCKED_PATTERNS = [
   /^https?:\/\/localhost/i,
@@ -40,6 +89,17 @@ export function validateTestUrl(url: string): { valid: boolean; error?: string }
       if (pattern.test(url)) {
         return { valid: false, error: 'Internal/localhost URLs not allowed' };
       }
+    }
+    
+    // Check domain allowlist
+    if (!isDomainAllowed(parsed.hostname)) {
+      const allowlist = getDomainAllowlist();
+      return {
+        valid: false,
+        error: `Domain "${parsed.hostname}" is not in the allowed domain list for credential tests. ` +
+          `Allowed domains: ${allowlist.join(', ')}. ` +
+          `Set VAULT_TEST_DOMAIN_ALLOWLIST env var to customize.`,
+      };
     }
     
     return { valid: true };
