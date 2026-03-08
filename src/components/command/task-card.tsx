@@ -3,6 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Task, PRIORITIES, CREATORS } from "@/types/kanban";
+import { useKanbanDnd } from "./kanban-dnd-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,8 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
     transition,
     isDragging,
   } = useSortable({ id: task.id });
+  const { activeOverTaskId, isDraggingTask } = useKanbanDnd();
+  const isDropTarget = isDraggingTask && !isDragging && activeOverTaskId === task.id;
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -57,13 +60,18 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
   const isDone = task.status === "DONE";
 
   return (
-    <Card
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={handleCardClick}
-      className={`cursor-grab active:cursor-grabbing border-zinc-700 hover:border-zinc-600 transition-all hover:scale-[1.02] ${
+    <div>
+      {/* Drop position indicator */}
+      {isDropTarget && (
+        <div className="h-0.5 bg-blue-500 rounded-full mx-1 -mt-1 mb-1 shadow-[0_0_4px_rgba(59,130,246,0.5)]" />
+      )}
+      <Card
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        onClick={handleCardClick}
+        className={`cursor-grab active:cursor-grabbing border-zinc-700 hover:border-zinc-600 transition-all hover:scale-[1.02] ${
         isDone ? "bg-zinc-900 opacity-60" : "bg-zinc-800"
       } ${task.needsReview ? "ring-2 ring-amber-500/70 ring-offset-1 ring-offset-zinc-900" : ""}`}
     >
@@ -149,5 +157,6 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }

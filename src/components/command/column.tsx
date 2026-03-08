@@ -4,6 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Task, Status } from "@/types/kanban";
 import { TaskCard } from "./task-card";
+import { useKanbanDnd } from "./kanban-dnd-context";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,13 +20,17 @@ interface ColumnProps {
 }
 
 export function Column({ id, title, tasks, onEditTask, onDeleteTask, onToggleFlag, onAddTask }: ColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+  const { setNodeRef } = useDroppable({ id });
+  const { activeOverColumnId, isDraggingTask } = useKanbanDnd();
+
+  // Show drop zone when dragging a task over this column (works for both empty and non-empty columns)
+  const isColumnActive = isDraggingTask && activeOverColumnId === id;
 
   return (
     <div 
       ref={setNodeRef}
       className={`flex flex-col h-full min-h-0 bg-zinc-900 rounded-lg border transition-colors ${
-        isOver 
+        isColumnActive 
           ? "border-blue-500 bg-blue-500/5" 
           : "border-zinc-800"
       }`}
