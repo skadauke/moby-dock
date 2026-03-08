@@ -75,7 +75,6 @@ export async function POST(request: NextRequest) {
     seen.add(id);
   }
 
-  // Accept both READY and IN_PROGRESS (legacy DB value)
   const validStatuses = ["BACKLOG", "READY", "IN_PROGRESS", "DONE"];
   if (!validStatuses.includes(status)) {
     log.warn("POST /api/tasks/reorder - invalid status", { status });
@@ -89,8 +88,7 @@ export async function POST(request: NextRequest) {
     userId: authResult.userId,
   });
 
-  // Map IN_PROGRESS to READY (DB compatibility)
-  const mappedStatus = status === "IN_PROGRESS" ? "READY" : status;
+  const mappedStatus = status;
 
   const startTime = Date.now();
   const result = await reorderTasks(taskIds, mappedStatus as Status);
