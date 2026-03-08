@@ -302,7 +302,9 @@ app.post('/gateway/ping', authenticate, async (req, res) => {
       body: JSON.stringify({
         tool: 'sessions_send',
         args: {
+          sessionKey: config.session?.mainKey || 'agent:main:main',
           message: message || 'New task available in Moby Kanban. Check the Ready column.',
+          timeoutSeconds: 2,  // Fire-and-forget: don't wait for Moby's response
         },
       }),
       signal: controller.signal,
