@@ -328,6 +328,13 @@ wss.on('connection', (ws, request) => {
 
   ws.send(JSON.stringify({ type: 'connected', id: sessionId }));
 
+  // Keepalive ping every 30s to prevent Cloudflare tunnel idle timeout
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === ws.OPEN) {
+      ws.ping();
+    }
+  }, 30000);
+
   // PTY → WebSocket
   shell.onData((data) => {
     if (ws.readyState === ws.OPEN) {
@@ -357,6 +364,7 @@ wss.on('connection', (ws, request) => {
   });
 
   function cleanup() {
+    clearInterval(pingInterval);
     terminalSessions.delete(sessionId);
     console.log(`Terminal session ${sessionId} ended (${terminalSessions.size} active)`);
     try { shell.kill(); } catch {}

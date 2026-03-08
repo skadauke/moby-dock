@@ -49,6 +49,15 @@ export function TerminalInstance({ sessionId, isVisible }: TerminalInstanceProps
     ws.onopen = () => {
       setConnected(sessionId, true);
       setDisconnected(false);
+      // Client-side keepalive: send empty data every 30s to prevent idle timeout
+      const keepalive = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        } else {
+          clearInterval(keepalive);
+        }
+      }, 30000);
+      (ws as unknown as Record<string, unknown>)._keepalive = keepalive;
     };
 
     ws.onmessage = (event) => {
@@ -70,6 +79,7 @@ export function TerminalInstance({ sessionId, isVisible }: TerminalInstanceProps
     };
 
     ws.onclose = () => {
+      clearInterval((ws as unknown as Record<string, unknown>)._keepalive as number);
       setConnected(sessionId, false);
       setDisconnected(true);
     };
