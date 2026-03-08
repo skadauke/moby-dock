@@ -169,6 +169,105 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', allowedPaths: ALLOWED_PATHS });
 });
 
+// ─── Credential Test Endpoint ───────────────────────────────────────
+// POST /credentials/test — Execute an HTTP probe to verify a credential
+const ALLOWED_PROTOCOLS = ['https:'];
+const BLOCKED_PATTERNS = [
+  /^https?:\/\/localhost/i,
+  /^https?:\/\/127\./,
+  /^https?:\/\/10\./,
+  /^https?:\/\/192\.168\./,
+  /^https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./,
+  /^https?:\/\/\[::1\]/,
+  /^https?:\/\/0\.0\.0\.0/,
+];
+
+function validateTestUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+      return { valid: false, error: `Protocol ${parsed.protocol} not allowed. Use HTTPS.` };
+    }
+    for (const pattern of BLOCKED_PATTERNS) {
+      if (pattern.test(url)) {
+        return { valid: false, error: 'Internal/localhost URLs not allowed' };
+      }
+    }
+    return { valid: true };
+  } catch {
+    return { valid: false, error: 'Invalid URL format' };
+  }
+}
+
+app.post('/credentials/test', authenticate, async (req, res) => {
+  const { test: testConfig, value } = req.body;
+
+  if (!testConfig || !value) {
+    return res.status(400).json({ error: 'Missing test config or value' });
+  }
+
+  // Validate URL
+  const urlCheck = validateTestUrl(testConfig.url);
+  if (!urlCheck.valid) {
+    return res.json({
+      success: false, status: 0, message: `URL validation failed: ${urlCheck.error}`,
+      testedAt: new Date().toISOString(), durationMs: 0,
+    });
+  }
+
+  const startTime = Date.now();
+
+  try {
+    // Substitute $VALUE placeholders
+    const sub = (s) => s.replace(/\$VALUE/g, value);
+    const url = sub(testConfig.url);
+    const headers = {};
+    if (testConfig.headers) {
+      for (const [k, v] of Object.entries(testConfig.headers)) {
+        headers[k] = sub(v);
+      }
+    }
+
+    const fetchOpts = { method: testConfig.method, headers };
+    if (testConfig.body && ['POST', 'PUT'].includes(testConfig.method)) {
+      fetchOpts.body = sub(testConfig.body);
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const response = await fetch(url, { ...fetchOpts, signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    const durationMs = Date.now() - startTime;
+    const expectedStatuses = Array.isArray(testConfig.expectStatus)
+      ? testConfig.expectStatus
+      : [testConfig.expectStatus];
+    const statusMatch = expectedStatuses.includes(response.status);
+
+    let bodyMatch = true;
+    if (testConfig.expectBodyContains && statusMatch) {
+      const body = await response.text();
+      bodyMatch = body.includes(testConfig.expectBodyContains);
+    }
+
+    const success = statusMatch && bodyMatch;
+    let message;
+    if (success) message = `Valid - received ${response.status}`;
+    else if (!statusMatch) message = `Invalid - expected ${expectedStatuses.join(' or ')}, got ${response.status}`;
+    else message = 'Invalid - response body did not contain expected content';
+
+    res.json({ success, status: response.status, message, testedAt: new Date().toISOString(), durationMs });
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    let message = 'Test failed';
+    if (error.name === 'AbortError') message = 'Request timed out (30s)';
+    else if (error.message) message = `Network error: ${error.message}`;
+
+    res.json({ success: false, status: 0, message, testedAt: new Date().toISOString(), durationMs });
+  }
+});
+
 // POST /gateway/ping - Send wake event to OpenClaw gateway
 app.post('/gateway/ping', authenticate, async (req, res) => {
   const { text = "Check Ready queue for tasks", mode = "now" } = req.body;

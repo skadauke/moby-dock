@@ -1,1 +1,1 @@
-export { VaultClient } from "./VaultClient";
+export { VaultLayout } from "./VaultLayout";

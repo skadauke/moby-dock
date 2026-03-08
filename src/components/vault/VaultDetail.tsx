@@ -1,0 +1,587 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  X,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Trash2,
+  Save,
+  Play,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CREDENTIAL_TYPES, type FieldSchema } from "@/lib/vault/schemas";
+import type { VaultItemType, MaskedVaultItem } from "@/lib/vault/types";
+import { getTypeIcon } from "./VaultList";
+import {
+  ExpiryBadge,
+  TestBadge,
+  getExpiryStatus,
+  getTestStatus,
+} from "./VaultStatusBadge";
+
+interface Props {
+  item: MaskedVaultItem | null;
+  /** When set, we're in create mode for this type */
+  createType: VaultItemType | null;
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}
+
+export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: Props) {
+  const isCreate = !!createType;
+  const type = createType ?? item?.type ?? "api_key";
+  const schema = CREDENTIAL_TYPES[type];
+  const Icon = getTypeIcon(type);
+
+  // Form state — all field values keyed by field key
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [name, setName] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+
+  // UI state
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Populate form when item changes
+  useEffect(() => {
+    if (isCreate) {
+      setValues({});
+      setName("");
+      setTags([]);
+      setRevealed({});
+      setRevealedKeys(new Set());
+      return;
+    }
+    if (!item) return;
+
+    const vals: Record<string, string> = {};
+    // Map item fields into the form
+    for (const f of schema.fields) {
+      const k = f.key;
+      // Check top-level item keys first
+      if (k === "service" && item.service) vals[k] = item.service;
+      else if (k === "username" && item.username) vals[k] = item.username;
+      else if (k === "url" && item.url) vals[k] = item.url;
+      else if (k === "expires" && item.expires) vals[k] = item.expires;
+      else if (k === "notes" && item.notes) vals[k] = item.notes;
+      else if (k === "usedBy" && item.usedBy) vals[k] = item.usedBy.join(", ");
+      // Then check fields object
+      else if (item.fields && item.fields[k] !== undefined && item.fields[k] !== null) {
+        const v = item.fields[k];
+        vals[k] = Array.isArray(v) ? v.join(", ") : String(v);
+      }
+      // Secret fields show nothing — they need to be revealed
+    }
+
+    setValues(vals);
+    setName(item.name);
+    setTags(item.tags ?? []);
+    setRevealed({});
+    setRevealedKeys(new Set());
+  }, [item, isCreate, schema, type]);
+
+  const setField = (key: string, value: string) => {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Reveal secrets
+  const revealSecrets = useCallback(async () => {
+    if (!item) return;
+    try {
+      const res = await fetch(`/api/vault/items/${item.id}/reveal`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to reveal");
+      const data = await res.json();
+      setRevealed(data.secrets ?? {});
+      setRevealedKeys(new Set(Object.keys(data.secrets ?? {})));
+    } catch {
+      setError("Failed to reveal secrets");
+    }
+  }, [item]);
+
+  const toggleReveal = (key: string) => {
+    if (revealedKeys.has(key)) {
+      setRevealedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    } else if (revealed[key]) {
+      setRevealedKeys((prev) => new Set(prev).add(key));
+    } else {
+      // Need to fetch all secrets first
+      revealSecrets();
+    }
+  };
+
+  // Copy
+  const copyValue = async (key: string) => {
+    const val = revealed[key] || values[key];
+    if (!val) return;
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch {
+      // silent
+    }
+  };
+
+  // Save
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // Build body from form values
+      const body: Record<string, unknown> = { name, tags };
+
+      // Top-level mapped keys
+      const topLevelMap: Record<string, string> = {
+        service: "service",
+        username: "username",
+        url: "url",
+        expires: "expires",
+        notes: "notes",
+      };
+
+      const fields: Record<string, string | string[]> = {};
+
+      for (const f of schema.fields) {
+        const v = values[f.key]?.trim();
+        if (!v && f.required) {
+          setError(`${f.label} is required`);
+          setSaving(false);
+          return;
+        }
+        if (!v) continue;
+
+        if (f.key === "value") body.value = v;
+        else if (f.key === "password") body.password = v;
+        else if (f.key === "usedBy") body.usedBy = v.split(",").map((s) => s.trim()).filter(Boolean);
+        else if (f.key === "tags") {
+          // handled via tags state
+        } else if (topLevelMap[f.key]) body[topLevelMap[f.key]] = v;
+        else fields[f.key] = v;
+      }
+
+      if (Object.keys(fields).length > 0) body.fields = fields;
+
+      if (isCreate) {
+        body.type = type;
+        const res = await fetch("/api/vault/items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || "Failed to create");
+        }
+      } else if (item) {
+        const res = await fetch(`/api/vault/items/${item.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || "Failed to update");
+        }
+      }
+
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete
+  const handleDelete = async () => {
+    if (!item) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/vault/items/${item.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      setDeleteOpen(false);
+      onDeleted();
+    } catch {
+      setError("Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Test
+  const handleTest = async () => {
+    if (!item) return;
+    setTesting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/vault/items/${item.id}/test`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Test failed");
+      onSaved(); // Refresh to get updated test status
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // Add tag
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !tags.includes(t)) {
+      setTags([...tags, t]);
+    }
+    setTagInput("");
+  };
+
+  const isOpen = !!item || isCreate;
+
+  return (
+    <>
+      {/* Slide-out panel */}
+      <div
+        className={cn(
+          "fixed inset-y-0 right-0 w-[400px] bg-zinc-900 border-l border-zinc-800 z-40 transform transition-transform duration-200 ease-out flex flex-col",
+          isOpen ? "translate-x-0" : "translate-x-full",
+        )}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+          <div className="h-8 w-8 rounded-md bg-zinc-800 flex items-center justify-center shrink-0">
+            <Icon className="h-4 w-4 text-zinc-400" />
+          </div>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Item name…"
+            className="bg-transparent border-none text-base font-medium h-8 px-0 focus-visible:ring-0"
+          />
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Status bar */}
+        {!isCreate && item && (
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/50">
+            <ExpiryBadge status={getExpiryStatus(item.expires)} />
+            {schema.testable && (
+              <>
+                <TestBadge status={getTestStatus(item.lastTestResult)} timestamp={item.lastTested} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs gap-1 ml-auto"
+                  onClick={handleTest}
+                  disabled={testing}
+                >
+                  {testing ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3" />
+                  )}
+                  Test now
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Fields */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {schema.fields.map((field) => (
+            <FieldRow
+              key={field.key}
+              field={field}
+              value={values[field.key] ?? ""}
+              revealedValue={revealed[field.key]}
+              isRevealed={revealedKeys.has(field.key)}
+              isCopied={copiedKey === field.key}
+              onChange={(v) => setField(field.key, v)}
+              onToggleReveal={() => toggleReveal(field.key)}
+              onCopy={() => copyValue(field.key)}
+              isCreate={isCreate}
+              hasSecretValue={item?.secretFieldKeys?.includes(field.key) ?? false}
+            />
+          ))}
+
+          {/* Tags (if not a schema field) */}
+          {!schema.fields.some((f) => f.key === "tags") && (
+            <div className="space-y-2">
+              <Label className="text-xs text-zinc-400">Tags</Label>
+              <div className="flex flex-wrap gap-1 mb-1">
+                {tags.map((t) => (
+                  <Badge
+                    key={t}
+                    variant="secondary"
+                    className="text-xs bg-zinc-800 gap-1 cursor-pointer hover:bg-zinc-700"
+                    onClick={() => setTags(tags.filter((x) => x !== t))}
+                  >
+                    {t} ×
+                  </Badge>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                <Input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
+                  placeholder="Add tag…"
+                  className="bg-zinc-800 border-zinc-700 h-7 text-xs"
+                />
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={addTag}>
+                  Add
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-4 py-3 border-t border-zinc-800">
+          {!isCreate && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-400 hover:text-red-300 gap-1"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+          )}
+          <div className="flex-1" />
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 gap-1"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {isCreate ? "Create" : "Save"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/30 z-30"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle>Delete Item</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{item?.name}</strong>? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── Individual Field Row ───────────────────────────────────────────
+function FieldRow({
+  field,
+  value,
+  revealedValue,
+  isRevealed,
+  isCopied,
+  onChange,
+  onToggleReveal,
+  onCopy,
+  isCreate,
+  hasSecretValue,
+}: {
+  field: FieldSchema;
+  value: string;
+  revealedValue?: string;
+  isRevealed: boolean;
+  isCopied: boolean;
+  onChange: (v: string) => void;
+  onToggleReveal: () => void;
+  onCopy: () => void;
+  isCreate: boolean;
+  hasSecretValue: boolean;
+}) {
+  const isSecret = field.type === "secret";
+
+  // For tags-type fields
+  if (field.type === "tags") {
+    return (
+      <div className="space-y-1">
+        <Label className="text-xs text-zinc-400">
+          {field.label}
+          {field.required && <span className="text-red-400 ml-0.5">*</span>}
+        </Label>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder || "comma-separated values"}
+          className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+        />
+      </div>
+    );
+  }
+
+  // Select
+  if (field.type === "select" && field.options) {
+    return (
+      <div className="space-y-1">
+        <Label className="text-xs text-zinc-400">
+          {field.label}
+          {field.required && <span className="text-red-400 ml-0.5">*</span>}
+        </Label>
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="bg-zinc-800 border-zinc-700 h-8 text-sm">
+            <SelectValue placeholder={`Select ${field.label.toLowerCase()}…`} />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-800 border-zinc-700">
+            {field.options.map((o) => (
+              <SelectItem key={o} value={o}>
+                {o}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  // Textarea
+  if (field.type === "textarea") {
+    return (
+      <div className="space-y-1">
+        <Label className="text-xs text-zinc-400">
+          {field.label}
+          {field.required && <span className="text-red-400 ml-0.5">*</span>}
+        </Label>
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          className="bg-zinc-800 border-zinc-700 text-sm min-h-[60px]"
+        />
+      </div>
+    );
+  }
+
+  // Secret field
+  if (isSecret) {
+    const displayValue = isCreate
+      ? value
+      : isRevealed
+        ? revealedValue ?? value
+        : hasSecretValue || value
+          ? "••••••••••••••••"
+          : "";
+
+    return (
+      <div className="space-y-1">
+        <Label className="text-xs text-zinc-400">
+          {field.label}
+          {field.required && <span className="text-red-400 ml-0.5">*</span>}
+        </Label>
+        <div className="flex items-center gap-1">
+          <Input
+            type={isCreate || isRevealed ? "text" : "password"}
+            value={isCreate ? value : isRevealed ? revealedValue ?? "" : ""}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={isCreate ? field.placeholder || "Enter value…" : ""}
+            readOnly={!isCreate && !isRevealed}
+            className={cn(
+              "bg-zinc-800 border-zinc-700 h-8 text-sm font-mono flex-1",
+              !isCreate && !isRevealed && hasSecretValue && "text-zinc-500",
+            )}
+          />
+          {!isCreate && (
+            <>
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onToggleReveal}>
+                {isRevealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onCopy}>
+                {isCopied ? (
+                  <Check className="h-3.5 w-3.5 text-green-400" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Regular text / date
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-zinc-400">
+        {field.label}
+        {field.required && <span className="text-red-400 ml-0.5">*</span>}
+      </Label>
+      <Input
+        type={field.type === "date" ? "date" : "text"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.placeholder}
+        className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+      />
+    </div>
+  );
+}
