@@ -24,6 +24,12 @@ const ALLOWED_PATHS = [
   `${HOME}/clawd`,           // Workspace
   `${HOME}/.openclaw`,       // OpenClaw config
   `${HOME}/.clawdbot`,       // Legacy clawdbot config (if needed)
+  `${HOME}/openclaw/skills`, // Built-in skills (read-only)
+];
+
+// Read-only paths — writes/deletes blocked
+const READ_ONLY_PATHS = [
+  `${HOME}/openclaw/skills`,
 ];
 
 // Middleware
@@ -47,6 +53,12 @@ function authenticate(req, res, next) {
 function isPathAllowed(filePath) {
   const resolved = path.resolve(filePath.replace(/^~/, HOME));
   return ALLOWED_PATHS.some(allowed => resolved.startsWith(allowed));
+}
+
+// Check if path is read-only
+function isPathReadOnly(filePath) {
+  const resolved = path.resolve(filePath.replace(/^~/, HOME));
+  return READ_ONLY_PATHS.some(ro => resolved.startsWith(ro));
 }
 
 // Resolve path (handle ~ and relative paths)
@@ -95,6 +107,10 @@ app.post('/files', authenticate, async (req, res) => {
     return res.status(403).json({ error: 'Path not allowed' });
   }
 
+  if (isPathReadOnly(filePath)) {
+    return res.status(403).json({ error: 'Path is read-only' });
+  }
+
   try {
     const resolved = resolvePath(filePath);
     // Create directory if it doesn't exist
@@ -117,6 +133,10 @@ app.delete('/files', authenticate, async (req, res) => {
 
   if (!isPathAllowed(filePath)) {
     return res.status(403).json({ error: 'Path not allowed' });
+  }
+
+  if (isPathReadOnly(filePath)) {
+    return res.status(403).json({ error: 'Path is read-only' });
   }
 
   try {
