@@ -31,10 +31,13 @@ import {
   Save,
   Play,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CREDENTIAL_TYPES, type FieldSchema } from "@/lib/vault/schemas";
-import type { VaultItemType, MaskedVaultItem } from "@/lib/vault/types";
+import type { VaultItemType, MaskedVaultItem, TestConfig } from "@/lib/vault/types";
 import { getTypeIcon } from "./VaultList";
 import {
   ExpiryBadge,
@@ -64,6 +67,10 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
+  // Test config state
+  const [testConfig, setTestConfig] = useState<Partial<TestConfig>>({});
+  const [testConfigOpen, setTestConfigOpen] = useState(false);
+
   // UI state
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
@@ -80,6 +87,8 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
       setValues({});
       setName("");
       setTags([]);
+      setTestConfig({});
+      setTestConfigOpen(false);
       setRevealed({});
       setRevealedKeys(new Set());
       return;
@@ -108,6 +117,8 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
     setValues(vals);
     setName(item.name);
     setTags(item.tags ?? []);
+    setTestConfig(item.test ?? {});
+    setTestConfigOpen(false);
     setRevealed({});
     setRevealedKeys(new Set());
   }, [item, isCreate, schema, type]);
@@ -203,6 +214,11 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
       }
 
       if (Object.keys(fields).length > 0) body.fields = fields;
+
+      // Include test config if this type is testable and config is filled
+      if (schema.testable && testConfig.url && testConfig.method && testConfig.expectStatus) {
+        body.test = testConfig;
+      }
 
       if (isCreate) {
         body.type = type;
@@ -347,6 +363,125 @@ export function VaultDetail({ item, createType, onClose, onSaved, onDeleted }: P
               hasSecretValue={item?.secretFieldKeys?.includes(field.key) ?? false}
             />
           ))}
+
+          {/* Test Configuration (for testable types) */}
+          {schema.testable && (
+            <div className="space-y-2 border border-zinc-800 rounded-md">
+              <button
+                type="button"
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+                onClick={() => setTestConfigOpen(!testConfigOpen)}
+              >
+                {testConfigOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                <FlaskConical className="h-3.5 w-3.5" />
+                Test Configuration
+                {testConfig.url && (
+                  <Badge variant="secondary" className="text-[10px] bg-zinc-800 ml-auto">
+                    Configured
+                  </Badge>
+                )}
+              </button>
+              {testConfigOpen && (
+                <div className="px-3 pb-3 space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-zinc-400">Test URL</Label>
+                    <Input
+                      value={testConfig.url ?? ""}
+                      onChange={(e) =>
+                        setTestConfig((prev) => ({ ...prev, url: e.target.value }))
+                      }
+                      placeholder="https://api.example.com/v1/me"
+                      className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Method</Label>
+                      <Select
+                        value={testConfig.method ?? "GET"}
+                        onValueChange={(v) =>
+                          setTestConfig((prev) => ({
+                            ...prev,
+                            method: v as TestConfig["method"],
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="bg-zinc-800 border-zinc-700 h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-800 border-zinc-700">
+                          <SelectItem value="GET">GET</SelectItem>
+                          <SelectItem value="POST">POST</SelectItem>
+                          <SelectItem value="PUT">PUT</SelectItem>
+                          <SelectItem value="HEAD">HEAD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Expected Status</Label>
+                      <Input
+                        value={
+                          testConfig.expectStatus
+                            ? Array.isArray(testConfig.expectStatus)
+                              ? testConfig.expectStatus.join(", ")
+                              : String(testConfig.expectStatus)
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const nums = e.target.value
+                            .split(",")
+                            .map((s) => parseInt(s.trim(), 10))
+                            .filter((n) => !isNaN(n));
+                          setTestConfig((prev) => ({
+                            ...prev,
+                            expectStatus: nums.length === 1 ? nums[0] : nums.length > 1 ? nums : undefined,
+                          }));
+                        }}
+                        placeholder="200"
+                        className="bg-zinc-800 border-zinc-700 h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-zinc-400">
+                      Headers <span className="text-zinc-600">(one per line, Key: Value)</span>
+                    </Label>
+                    <Textarea
+                      value={
+                        testConfig.headers
+                          ? Object.entries(testConfig.headers)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join("\n")
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const headers: Record<string, string> = {};
+                        for (const line of e.target.value.split("\n")) {
+                          const idx = line.indexOf(":");
+                          if (idx > 0) {
+                            headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+                          }
+                        }
+                        setTestConfig((prev) => ({
+                          ...prev,
+                          headers: Object.keys(headers).length > 0 ? headers : undefined,
+                        }));
+                      }}
+                      placeholder={"Authorization: Bearer $VALUE"}
+                      className="bg-zinc-800 border-zinc-700 text-sm min-h-[48px] font-mono"
+                    />
+                    <p className="text-[10px] text-zinc-600">
+                      Use <code className="bg-zinc-800 px-1 rounded">$VALUE</code> as placeholder for the credential value
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tags (if not a schema field) */}
           {!schema.fields.some((f) => f.key === "tags") && (
