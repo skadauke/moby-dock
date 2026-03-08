@@ -211,7 +211,7 @@ function SkillFolder({ skill, isExpanded, selectedPath, onToggle, onSelectFile }
 export function SkillTree({ skills, selectedPath, onSelectFile }: SkillTreeProps) {
   const [expandedSkills, setExpandedSkills] = useState<Set<string>>(new Set());
   const [customCollapsed, setCustomCollapsed] = useState(false);
-  const [builtinCollapsed, setBuiltinCollapsed] = useState(false);
+  const [builtinCollapsed, setBuiltinCollapsed] = useState(true);
 
   const customSkills = skills.filter((s) => s.source === "custom");
   const builtinSkills = skills.filter((s) => s.source === "builtin");
