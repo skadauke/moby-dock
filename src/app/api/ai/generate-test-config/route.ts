@@ -17,11 +17,8 @@ import {
   TEST_CONFIG_SYSTEM_PROMPT,
   validateTestConfigPlaceholder,
 } from "@/lib/ai";
-import type { SecretsFile, TestConfig } from "@/lib/vault";
-
-const FILE_SERVER_URL = process.env.FILE_SERVER_URL || "http://localhost:4001";
-const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
-const SECRETS_PATH = "~/.openclaw/credentials/secrets.json";
+import type { TestConfig } from "@/lib/vault";
+import { readVault, writeVault } from "@/lib/vault/server-helpers";
 
 interface RequestBody {
   /** Credential ID to generate test for */
@@ -99,30 +96,12 @@ export async function POST(request: Request) {
   });
   
   try {
-    // Fetch secrets file (with timeout)
-    const res = await fetch(
-      `${FILE_SERVER_URL}/files?path=${encodeURIComponent(SECRETS_PATH)}`,
-      {
-        headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-        signal: AbortSignal.timeout(10000),
-      }
-    );
+    // Read vault (auto-migrates v2 → v3)
+    const vault = await readVault();
     
-    if (!res.ok) {
-      log.error("[FileServer] read secrets failed", { status: res.status });
-      await log.flush();
-      return NextResponse.json(
-        { error: "Failed to read secrets" },
-        { status: res.status }
-      );
-    }
-    
-    const { content } = await res.json();
-    const secrets: SecretsFile = JSON.parse(content);
-    
-    // Find credential
-    const credential = secrets.credentials[id];
-    if (!credential) {
+    // Find item
+    const item = vault.items.find((i) => i.id === id);
+    if (!item) {
       log.warn("Credential not found", { id });
       await log.flush();
       return NextResponse.json({ error: "Credential not found" }, { status: 404 });
@@ -131,11 +110,11 @@ export async function POST(request: Request) {
     // Build prompt
     const prompt = testConfigPrompt({
       id,
-      type: credential.type,
-      service: credential.service,
-      account: credential.account,
-      notes: credential.notes,
-      scopes: credential.scopes,
+      type: item.type,
+      service: item.service || "",
+      account: item.username,
+      notes: item.notes,
+      scopes: item.fields?.scope ? [item.fields.scope as string] : undefined,
     });
     
     // Generate test config via AI
@@ -185,8 +164,8 @@ export async function POST(request: Request) {
     // Log minimal config info for troubleshooting (no URLs/headers - may contain sensitive patterns)
     log.info("Generated test config", { 
       id,
-      service: credential.service,
-      type: credential.type,
+      service: item.service,
+      type: item.type,
       method: generatedConfig.method,
       expectStatus: generatedConfig.expectStatus,
       hasHeaders: !!generatedConfig.headers,
@@ -203,50 +182,10 @@ export async function POST(request: Request) {
       expectStatus: generatedConfig.expectStatus,
     };
     
-    // Save if requested (with optimistic locking)
+    // Save if requested
     if (save) {
-      // Check version for optimistic locking
-      if (secrets._meta.updated !== expectedVersion) {
-        log.warn("Version conflict", { 
-          expected: expectedVersion, 
-          actual: secrets._meta.updated 
-        });
-        await log.flush();
-        return NextResponse.json(
-          { 
-            error: "Version conflict",
-            message: "Secrets file was modified. Please refresh and try again.",
-            currentVersion: secrets._meta.updated
-          },
-          { status: 409 }
-        );
-      }
-      
-      secrets.credentials[id].test = testConfig;
-      secrets._meta.updated = new Date().toISOString();
-      
-      const writeRes = await fetch(`${FILE_SERVER_URL}/files`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          path: SECRETS_PATH,
-          content: JSON.stringify(secrets, null, 2),
-        }),
-        signal: AbortSignal.timeout(10000),
-      });
-      
-      if (!writeRes.ok) {
-        log.error("Failed to save test config", { status: writeRes.status });
-        await log.flush();
-        return NextResponse.json(
-          { error: "Generated config but failed to save" },
-          { status: 500 }
-        );
-      }
-      
+      item.test = testConfig;
+      await writeVault(vault);
       log.info("Saved test config", { id });
     }
     
@@ -261,10 +200,7 @@ export async function POST(request: Request) {
       notes: generatedConfig.notes,
       saved: save,
       attempts: result.attempts,
-      // AI output should be reviewed before use
       requiresUserConfirmation: true,
-      // Include version for optimistic locking on subsequent saves
-      version: secrets._meta.updated,
     });
     
   } catch (error) {

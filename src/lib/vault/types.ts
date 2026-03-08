@@ -1,21 +1,32 @@
 /**
- * Vault Types
- * 
- * Shared types for credential management
+ * Vault Types (v3)
+ *
+ * Unified credential & identity manager types
  */
 
-/**
- * Structured test configuration for credential verification
- * This is safer than storing arbitrary shell commands
- */
+// ── Credential Type Union ──────────────────────────────────────────
+export type VaultItemType =
+  | 'api_key'
+  | 'oauth_credential'
+  | 'app_password'
+  | 'login'
+  | 'identity'
+  | 'payment_card'
+  | 'bank_account'
+  | 'secure_note'
+  | 'passport'
+  | 'drivers_license'
+  | 'ssn';
+
+// ── Test Configuration ─────────────────────────────────────────────
 export interface TestConfig {
   /** HTTP method */
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'HEAD';
-  /** URL to test against - must be HTTPS */
+  /** URL to test against — must be HTTPS */
   url: string;
-  /** Headers to send - use $VALUE as placeholder for credential */
+  /** Headers to send — use $VALUE as placeholder for credential */
   headers?: Record<string, string>;
-  /** Request body for POST/PUT - use $VALUE as placeholder */
+  /** Request body for POST/PUT — use $VALUE as placeholder */
   body?: string;
   /** Expected HTTP status code(s) */
   expectStatus: number | number[];
@@ -23,9 +34,6 @@ export interface TestConfig {
   expectBodyContains?: string;
 }
 
-/**
- * Test execution result
- */
 export interface TestResult {
   success: boolean;
   status: number;
@@ -34,79 +42,104 @@ export interface TestResult {
   durationMs: number;
 }
 
-/**
- * Credential stored in secrets.json
- */
-export interface Credential {
-  /** Primary secret value (API key, token, password) */
+// ── Status Enums ───────────────────────────────────────────────────
+export type ExpiryStatus = 'ok' | 'warning' | 'expired' | 'none';
+export type TestStatus = 'passed' | 'failed' | 'untested';
+
+// ── Vault Item ─────────────────────────────────────────────────────
+export interface VaultItem {
+  /** UUID */
+  id: string;
+  /** Credential type */
+  type: VaultItemType;
+  /** Human-readable name */
+  name: string;
+
+  // ── Primary secret (api_key, app_password, login password, etc.) ──
   value?: string;
-  /** OAuth client ID */
-  client_id?: string;
-  /** OAuth client secret */
-  client_secret?: string;
-  /** Service URL */
+
+  // ── Common fields ──
+  service?: string;
+  username?: string;
+  password?: string;
   url?: string;
-  /** Supabase anon key */
-  anon_key?: string;
-  /** Supabase service role key */
-  service_role_key?: string;
-  /** Generic auth token */
-  auth_token?: string;
-  /** Credential type (api_key, pat, oauth_app, bot_token, etc.) */
-  type: string;
-  /** Service name (GitHub, OpenAI, etc.) */
-  service: string;
-  /** Account/username associated with credential */
-  account?: string;
-  /** Email associated with credential */
-  email?: string;
-  /** OAuth scopes */
-  scopes?: string[];
-  /** Project name */
-  project?: string;
-  /** Expiration date (ISO string) or null if no expiry */
-  expires: string | null;
-  /** Creation date (ISO string) */
-  created: string;
-  /** Files/projects using this credential */
-  used_by: string[];
-  /** Human-readable notes */
+  created?: string;
+  expires?: string | null;
+  tags?: string[];
   notes?: string;
-  /** Test configuration for verification */
+  usedBy?: string[];
+
+  // ── Test ──
   test?: TestConfig;
-  /** Last test result */
-  lastTestResult?: TestResult;
+  lastTested?: string;
+  lastTestResult?: 'pass' | 'fail';
+
+  // ── Type-specific fields stored in `fields` ──
+  fields?: Record<string, string | string[] | null | undefined>;
 }
 
-/**
- * Full secrets.json file structure
- */
-export interface SecretsFile {
-  credentials: Record<string, Credential>;
+// ── Vault File (v3 on disk) ────────────────────────────────────────
+export interface VaultFile {
+  version: 3;
+  items: VaultItem[];
+}
+
+// ── Masked Vault Item (API responses — no secrets) ─────────────────
+export interface MaskedVaultItem {
+  id: string;
+  type: VaultItemType;
+  name: string;
+
+  service?: string;
+  username?: string;
+  url?: string;
+  created?: string;
+  expires?: string | null;
+  tags?: string[];
+  notes?: string;
+  usedBy?: string[];
+
+  test?: TestConfig;
+  lastTested?: string;
+  lastTestResult?: 'pass' | 'fail';
+
+  /** Which secret-typed field keys have a value */
+  hasValue: boolean;
+  /** Type-specific non-secret fields (secret fields nulled out) */
+  fields?: Record<string, string | string[] | null | undefined>;
+  /** Keys of secret fields that have values */
+  secretFieldKeys?: string[];
+}
+
+// ── Legacy v2 types (for migration) ────────────────────────────────
+export interface LegacyCredential {
+  value?: string;
+  client_id?: string;
+  client_secret?: string;
+  url?: string;
+  anon_key?: string;
+  service_role_key?: string;
+  auth_token?: string;
+  type: string;
+  service: string;
+  account?: string;
+  email?: string;
+  scopes?: string[];
+  project?: string;
+  expires: string | null;
+  created: string;
+  used_by: string[];
+  notes?: string;
+  test?: TestConfig;
+  lastTestResult?: TestResult;
+  [key: string]: unknown;
+}
+
+export interface LegacySecretsFile {
+  credentials: Record<string, LegacyCredential>;
   _meta: {
     version: number;
     updated: string;
     check_expiry_days_before: number;
   };
-}
-
-/**
- * Masked credential for API responses (no secret values)
- */
-export interface MaskedCredential {
-  id: string;
-  type: string;
-  service: string;
-  account?: string;
-  email?: string;
-  scopes?: string[];
-  project?: string;
-  expires: string | null;
-  created: string;
-  used_by: string[];
-  notes?: string;
-  hasValue: boolean;
-  hasClientCredentials: boolean;
-  hasTest: boolean;
-  lastTestResult?: TestResult;
 }

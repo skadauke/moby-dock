@@ -187,7 +187,7 @@ describe("shouldCheckCsrf", () => {
   it("returns true for other API routes", () => {
     expect(shouldCheckCsrf("/api/files")).toBe(true);
     expect(shouldCheckCsrf("/api/gateway/restart")).toBe(true);
-    expect(shouldCheckCsrf("/api/vault/secrets")).toBe(true);
+    expect(shouldCheckCsrf("/api/vault/items")).toBe(true);
     expect(shouldCheckCsrf("/api/tasks")).toBe(true);
   });
 
