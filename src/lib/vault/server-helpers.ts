@@ -7,6 +7,7 @@
 import type { VaultFile, VaultItem, MaskedVaultItem, VaultItemType } from './types';
 import { getSecretFieldKeys, CREDENTIAL_TYPES } from './schemas';
 import { migrateV2toV3 } from './migrate';
+import { getTestPreset } from './test-presets';
 
 const FILE_SERVER_URL = process.env.FILE_SERVER_URL || 'http://localhost:4001';
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || '';
@@ -35,11 +36,18 @@ export async function readVault(): Promise<VaultFile> {
 
   // Check if already v3
   if (parsed && typeof parsed === 'object' && parsed.version === 3 && Array.isArray(parsed.items)) {
-    return parsed as VaultFile;
+    const vault = parsed as VaultFile;
+    // Auto-add test configs for items that match known presets but have no test config
+    const enriched = autoEnrichTestConfigs(vault);
+    if (enriched) {
+      await writeVault(vault);
+    }
+    return vault;
   }
 
   // Migration needed — convert and persist immediately so IDs are stable
   const vault = migrateV2toV3(parsed);
+  autoEnrichTestConfigs(vault);
   await writeVault(vault);
   return vault;
 }
@@ -64,6 +72,62 @@ export async function writeVault(vault: VaultFile): Promise<void> {
   if (!res.ok) {
     throw new Error(`File server write returned ${res.status}`);
   }
+}
+
+/**
+ * Auto-enrich vault items with test configs from known presets.
+ * Returns true if any items were enriched (vault needs to be persisted).
+ */
+function autoEnrichTestConfigs(vault: VaultFile): boolean {
+  let changed = false;
+  for (const item of vault.items) {
+    // Only enrich testable types that don't already have a test config
+    const schema = CREDENTIAL_TYPES[item.type];
+    if (!schema?.testable || item.test) continue;
+
+    const service = item.service?.toLowerCase().replace(/[\s-]+/g, '_') ?? '';
+    if (!service) continue;
+
+    const preset = getTestPreset(service);
+    if (preset) {
+      item.test = { ...preset.test };
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/**
+ * Derive top-level `expires` from type-specific fields.
+ *
+ * - payment_card: fields.expiry (MM/YY) → last day of that month (YYYY-MM-DD)
+ * - passport / drivers_license: fields.expiryDate (YYYY-MM-DD) → as-is
+ */
+export function deriveExpires(
+  type: VaultItemType,
+  fields: Record<string, string | string[] | null | undefined>,
+): string | null {
+  if (type === 'payment_card' && fields.expiry && typeof fields.expiry === 'string') {
+    // Parse MM/YY format
+    const match = fields.expiry.match(/^(\d{1,2})\/(\d{2,4})$/);
+    if (match) {
+      const month = parseInt(match[1], 10);
+      let year = parseInt(match[2], 10);
+      if (year < 100) year += 2000;
+      // Last day of the expiry month
+      const lastDay = new Date(year, month, 0).getDate();
+      const mm = String(month).padStart(2, '0');
+      const dd = String(lastDay).padStart(2, '0');
+      return `${year}-${mm}-${dd}`;
+    }
+  }
+
+  if ((type === 'passport' || type === 'drivers_license') && fields.expiryDate && typeof fields.expiryDate === 'string') {
+    // Already in YYYY-MM-DD format
+    return fields.expiryDate;
+  }
+
+  return null;
 }
 
 /**
