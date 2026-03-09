@@ -31,6 +31,22 @@ describe("getTemporalBucket", () => {
     expect(getTemporalBucket(new Date("2025-12-25T12:00:00"), now)).toBe("2025");
     expect(getTemporalBucket(new Date("2024-06-15T12:00:00"), now)).toBe("2024");
   });
+
+  it("returns 'Today' for future dates", () => {
+    expect(getTemporalBucket(new Date("2026-03-10T12:00:00"), now)).toBe("Today");
+  });
+
+  it("handles boundary at exactly 7 days (inclusive)", () => {
+    expect(getTemporalBucket(new Date("2026-03-02T12:00:00"), now)).toBe("Last 7 days");
+  });
+
+  it("handles boundary at exactly 30 days (inclusive)", () => {
+    expect(getTemporalBucket(new Date("2026-02-07T12:00:00"), now)).toBe("Last 30 days");
+  });
+
+  it("returns 'Unknown' for invalid dates", () => {
+    expect(getTemporalBucket(new Date("invalid"), now)).toBe("Unknown");
+  });
 });
 
 describe("groupByTemporalBucket", () => {

@@ -52,18 +52,6 @@ interface MemoryFileEntry {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-function relativeDate(d: Date): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diff = Math.round((today.getTime() - target.getTime()) / 86400000);
-  if (diff === 0) return "today";
-  if (diff === 1) return "yesterday";
-  if (diff < 7)
-    return d.toLocaleDateString("en-US", { weekday: "short" });
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 function parseDate(filename: string): Date | undefined {
   const m = filename.match(/^(\d{4}-\d{2}-\d{2})/);
   if (m) return new Date(m[1] + "T12:00:00");
@@ -72,8 +60,10 @@ function parseDate(filename: string): Date | undefined {
 
 function formatSessionDate(s: SessionInfo): string {
   const dateStr = s.startedAt || s.modifiedAt;
+  if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
     const now = new Date();
     const includeYear = d.getFullYear() !== now.getFullYear();
     return d.toLocaleDateString("en-US", {
@@ -349,8 +339,8 @@ export function MemoryClient() {
                   </p>
                 ) : (
                   groupByTemporalBucket(memoryFiles, (f) => f.date).map(
-                    ({ bucket, items }) => (
-                      <div key={bucket}>
+                    ({ bucket, items }, idx) => (
+                      <div key={`${bucket}-${idx}`}>
                         <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
                           {bucket}
                         </div>
@@ -403,10 +393,14 @@ export function MemoryClient() {
                     sessions,
                     (s) => {
                       const dateStr = s.startedAt || s.modifiedAt;
-                      try { return new Date(dateStr); } catch { return undefined; }
+                      if (!dateStr) return undefined;
+                      try {
+                        const d = new Date(dateStr);
+                        return isNaN(d.getTime()) ? undefined : d;
+                      } catch { return undefined; }
                     }
-                  ).map(({ bucket, items }) => (
-                    <div key={bucket}>
+                  ).map(({ bucket, items }, idx) => (
+                    <div key={`${bucket}-${idx}`}>
                       <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
                         {bucket}
                       </div>

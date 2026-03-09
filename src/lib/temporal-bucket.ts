@@ -10,16 +10,19 @@
  * - "2025" (just year for previous years)
  */
 export function getTemporalBucket(date: Date, now: Date = new Date()): string {
+  if (!date || isNaN(date.getTime())) return "Unknown";
+
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.round(
     (today.getTime() - target.getTime()) / 86400000
   );
 
+  if (diffDays < 0) return "Today"; // Future dates grouped with today
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return "Last 7 days";
-  if (diffDays < 30) return "Last 30 days";
+  if (diffDays <= 7) return "Last 7 days";
+  if (diffDays <= 30) return "Last 30 days";
 
   if (date.getFullYear() !== now.getFullYear()) {
     return String(date.getFullYear());
