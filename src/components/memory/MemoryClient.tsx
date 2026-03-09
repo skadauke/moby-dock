@@ -513,7 +513,7 @@ export function MemoryClient() {
               </span>
             </button>
             {sessionsOpen && (
-              <div className="space-y-0.5 mt-1 max-h-80 overflow-y-auto">
+              <div className="space-y-0.5 mt-1">
                 {sessions.length === 0 ? (
                   <p className="text-xs text-zinc-600 px-2 py-1">
                     No sessions found

@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
-import { getSession, getSessionType } from "@/lib/memory-api";
+import { getSession, getSessionType, getAgentId } from "@/lib/memory-api";
+import { useAgents } from "@/lib/agents-api";
 import type { SessionMessage, SessionInfo } from "@/lib/memory-api";
 
 interface SessionViewerProps {
@@ -349,6 +350,10 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const { agents } = useAgents();
+  const agentId = sessionInfo?.agentId ?? getAgentId(sessionInfo?.meta);
+  const agent = agents.find((a) => a.id === agentId);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -521,6 +526,16 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
     <div ref={containerRef} className="flex flex-col h-full" tabIndex={-1}>
       <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-3 flex-1 min-w-0">
+          {agent?.emoji && (
+            <span
+              className="text-base"
+              title={agent.name}
+              role="img"
+              aria-label={agent.name}
+            >
+              {agent.emoji}
+            </span>
+          )}
           {typeLabel && (
             <Badge variant="outline" className={`text-[10px] ${typeBadgeClass}`}>
               {typeLabel}

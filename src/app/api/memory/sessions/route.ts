@@ -91,7 +91,23 @@ export async function GET() {
 
     const merged = allSessions.flat();
 
-    return NextResponse.json({ sessions: merged });
+    // Deduplicate sessions by id — prefer the entry whose agentId matches meta.key
+    const deduped = new Map<string, (typeof merged)[0]>();
+    for (const s of merged) {
+      const existing = deduped.get(s.id);
+      if (!existing) {
+        deduped.set(s.id, s);
+      } else {
+        // Prefer the session whose agentId matches its meta.key
+        const key = typeof s.meta?.key === "string" ? s.meta.key : "";
+        if (key.startsWith(`agent:${s.agentId}:`)) {
+          deduped.set(s.id, s);
+        }
+      }
+    }
+    const sessions = Array.from(deduped.values());
+
+    return NextResponse.json({ sessions });
   } catch {
     return NextResponse.json(
       { error: "Failed to connect to file server" },
