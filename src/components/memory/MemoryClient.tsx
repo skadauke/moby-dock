@@ -26,6 +26,7 @@ import {
   getMemoryStatus,
   listSessions,
   getSessionType,
+  getAgentId,
   formatBytes,
 } from "@/lib/memory-api";
 import type {
@@ -34,6 +35,7 @@ import type {
   SessionInfo,
 } from "@/lib/memory-api";
 import { groupByTemporalBucket } from "@/lib/temporal-bucket";
+import { useAgents } from "@/lib/agents-api";
 
 const HOME = process.env.NEXT_PUBLIC_HOME_DIR || "/Users/skadauke";
 
@@ -78,11 +80,15 @@ function formatSessionDate(s: SessionInfo): string {
 
 // ── Component ───────────────────────────────────────────────────────
 export function MemoryClient() {
+  // Agent discovery
+  const { agents } = useAgents();
+
   // Sidebar state
   const [searchQuery, setSearchQuery] = useState("");
-  const [memoryFiles, setMemoryFiles] = useState<MemoryFileEntry[]>([]);
+  const [memoryFiles, setMemoryFiles] = useState<Record<string, MemoryFileEntry[]>>({});
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [memoryOpen, setMemoryOpen] = useState(true);
+  const [agentSectionsOpen, setAgentSectionsOpen] = useState<Record<string, boolean>>({});
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [status, setStatus] = useState<MemoryStatus | null>(null);
 
@@ -101,28 +107,71 @@ export function MemoryClient() {
 
   // ── Load sidebar data ─────────────────────────────────────────────
   useEffect(() => {
-    // Load memory files from directory listing
-    fetch(`/api/files/list?dir=${encodeURIComponent(`${HOME}/clawd/memory`)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const files: MemoryFileEntry[] = (data.files || [])
-          .filter(
-            (f: { name: string; isDirectory: boolean }) =>
-              !f.isDirectory && f.name.endsWith(".md")
-          )
-          .map((f: { name: string; path: string }) => ({
-            name: f.name,
-            path: `memory/${f.name}`,
-            fullPath: f.path,
-            date: parseDate(f.name),
-          }))
-          .sort(
-            (a: MemoryFileEntry, b: MemoryFileEntry) =>
-              (b.date?.getTime() || 0) - (a.date?.getTime() || 0)
-          );
-        setMemoryFiles(files);
-      })
-      .catch(() => {});
+    // Load memory files per agent
+    if (agents.length > 0) {
+      const filesPerAgent: Record<string, MemoryFileEntry[]> = {};
+      const defaultOpen: Record<string, boolean> = {};
+      Promise.all(
+        agents.map(async (agent) => {
+          try {
+            const r = await fetch(
+              `/api/files/list?dir=${encodeURIComponent(`${agent.workspace}/memory`)}`
+            );
+            const data = await r.json();
+            const files: MemoryFileEntry[] = (data.files || [])
+              .filter(
+                (f: { name: string; isDirectory: boolean }) =>
+                  !f.isDirectory && f.name.endsWith(".md")
+              )
+              .map((f: { name: string; path: string }) => ({
+                name: f.name,
+                path: `${agent.workspace}/memory/${f.name}`,
+                fullPath: f.path,
+                date: parseDate(f.name),
+              }))
+              .sort(
+                (a: MemoryFileEntry, b: MemoryFileEntry) =>
+                  (b.date?.getTime() || 0) - (a.date?.getTime() || 0)
+              );
+            filesPerAgent[agent.id] = files;
+            defaultOpen[agent.id] = agent.isDefault;
+          } catch {
+            filesPerAgent[agent.id] = [];
+            defaultOpen[agent.id] = agent.isDefault;
+          }
+        })
+      ).then(() => {
+        setMemoryFiles(filesPerAgent);
+        setAgentSectionsOpen((prev) => {
+          // Only set defaults if no sections have been toggled yet
+          if (Object.keys(prev).length === 0) return defaultOpen;
+          return prev;
+        });
+      });
+    } else {
+      // Fallback: no agents discovered yet, load from default path
+      fetch(`/api/files/list?dir=${encodeURIComponent(`${HOME}/clawd/memory`)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          const files: MemoryFileEntry[] = (data.files || [])
+            .filter(
+              (f: { name: string; isDirectory: boolean }) =>
+                !f.isDirectory && f.name.endsWith(".md")
+            )
+            .map((f: { name: string; path: string }) => ({
+              name: f.name,
+              path: `memory/${f.name}`,
+              fullPath: f.path,
+              date: parseDate(f.name),
+            }))
+            .sort(
+              (a: MemoryFileEntry, b: MemoryFileEntry) =>
+                (b.date?.getTime() || 0) - (a.date?.getTime() || 0)
+            );
+          setMemoryFiles({ main: files });
+        })
+        .catch(() => {});
+    }
 
     // Load sessions (sort by startedAt if available, otherwise modifiedAt)
     listSessions()
@@ -139,7 +188,7 @@ export function MemoryClient() {
 
     // Load status
     getMemoryStatus().then(setStatus).catch(() => {});
-  }, []);
+  }, [agents]);
 
   // ── File operations ───────────────────────────────────────────────
   const loadFile = useCallback(
@@ -317,50 +366,131 @@ export function MemoryClient() {
             </button>
             {memoryOpen && (
               <div className="space-y-0.5 mt-1">
-                {/* MEMORY.md pinned */}
-                <button
-                  onClick={() =>
-                    loadFile("MEMORY.md", `${HOME}/clawd/MEMORY.md`)
-                  }
-                  className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
-                    view.kind === "file" && view.path === "MEMORY.md"
-                      ? "bg-zinc-800 text-zinc-200"
-                      : "text-zinc-400"
-                  }`}
-                >
-                  <Star className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
-                  <span className="truncate">MEMORY.md</span>
-                </button>
+                {agents.length > 0 ? (
+                  agents.map((agent) => {
+                    const agentFiles = memoryFiles[agent.id] || [];
+                    const isOpen = agentSectionsOpen[agent.id] ?? agent.isDefault;
+                    const memoryMdPath = `${agent.workspace}/MEMORY.md`;
 
-                {/* Daily files grouped by date */}
-                {memoryFiles.length === 0 ? (
-                  <p className="text-xs text-zinc-600 px-2 py-1">
-                    No daily notes found
-                  </p>
-                ) : (
-                  groupByTemporalBucket(memoryFiles, (f) => f.date).map(
-                    ({ bucket, items }, idx) => (
-                      <div key={`${bucket}-${idx}`}>
-                        <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
-                          {bucket}
-                        </div>
-                        {items.map((f) => (
-                          <button
-                            key={f.name}
-                            onClick={() => loadFile(f.path, f.fullPath)}
-                            className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
-                              view.kind === "file" && view.path === f.path
-                                ? "bg-zinc-800 text-zinc-200"
-                                : "text-zinc-400"
-                            }`}
-                          >
-                            <FileText className="h-3.5 w-3.5 flex-shrink-0" />
-                            <span className="truncate">{f.name}</span>
-                          </button>
-                        ))}
+                    return (
+                      <div key={agent.id}>
+                        {/* Agent section header */}
+                        <button
+                          onClick={() =>
+                            setAgentSectionsOpen((prev) => ({
+                              ...prev,
+                              [agent.id]: !isOpen,
+                            }))
+                          }
+                          className="flex items-center gap-1 w-full px-2 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-400"
+                        >
+                          {isOpen ? (
+                            <ChevronDown className="h-3 w-3" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3" />
+                          )}
+                          <span>{agent.emoji || "📁"} {agent.name}</span>
+                        </button>
+
+                        {isOpen && (
+                          <div className="space-y-0.5 ml-1">
+                            {/* Pinned MEMORY.md */}
+                            <button
+                              onClick={() =>
+                                loadFile(memoryMdPath, memoryMdPath)
+                              }
+                              className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
+                                view.kind === "file" && view.fullPath === memoryMdPath
+                                  ? "bg-zinc-800 text-zinc-200"
+                                  : "text-zinc-400"
+                              }`}
+                            >
+                              <Star className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                              <span className="truncate">MEMORY.md</span>
+                            </button>
+
+                            {/* Daily files grouped by date */}
+                            {agentFiles.length === 0 ? (
+                              <p className="text-xs text-zinc-600 px-2 py-1">
+                                No daily notes found
+                              </p>
+                            ) : (
+                              groupByTemporalBucket(agentFiles, (f) => f.date).map(
+                                ({ bucket, items }, idx) => (
+                                  <div key={`${bucket}-${idx}`}>
+                                    <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
+                                      {bucket}
+                                    </div>
+                                    {items.map((f) => (
+                                      <button
+                                        key={f.fullPath}
+                                        onClick={() => loadFile(f.path, f.fullPath)}
+                                        className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
+                                          view.kind === "file" && view.fullPath === f.fullPath
+                                            ? "bg-zinc-800 text-zinc-200"
+                                            : "text-zinc-400"
+                                        }`}
+                                      >
+                                        <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">{f.name}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )
-                  )
+                    );
+                  })
+                ) : (
+                  <>
+                    {/* Fallback: single agent view */}
+                    <button
+                      onClick={() =>
+                        loadFile("MEMORY.md", `${HOME}/clawd/MEMORY.md`)
+                      }
+                      className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
+                        view.kind === "file" && view.path === "MEMORY.md"
+                          ? "bg-zinc-800 text-zinc-200"
+                          : "text-zinc-400"
+                      }`}
+                    >
+                      <Star className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                      <span className="truncate">MEMORY.md</span>
+                    </button>
+
+                    {(memoryFiles["main"] || []).length === 0 ? (
+                      <p className="text-xs text-zinc-600 px-2 py-1">
+                        No daily notes found
+                      </p>
+                    ) : (
+                      groupByTemporalBucket(memoryFiles["main"] || [], (f) => f.date).map(
+                        ({ bucket, items }, idx) => (
+                          <div key={`${bucket}-${idx}`}>
+                            <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
+                              {bucket}
+                            </div>
+                            {items.map((f) => (
+                              <button
+                                key={f.name}
+                                onClick={() => loadFile(f.path, f.fullPath)}
+                                className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
+                                  view.kind === "file" && view.path === f.path
+                                    ? "bg-zinc-800 text-zinc-200"
+                                    : "text-zinc-400"
+                                }`}
+                              >
+                                <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span className="truncate">{f.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      )
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -407,6 +537,9 @@ export function MemoryClient() {
                       {items.map((s) => {
                         const st = getSessionType(s.meta);
                         const isMain = st === "main";
+                        const sessionAgentId = s.agentId || getAgentId(s.meta);
+                        const sessionAgent = agents.find((a) => a.id === sessionAgentId);
+                        const agentEmoji = sessionAgent?.emoji;
                         const typeLabel =
                           st === "main"
                             ? "Main"
@@ -444,6 +577,11 @@ export function MemoryClient() {
                             <MessageSquare
                               className={`h-3.5 w-3.5 flex-shrink-0 ${isMain ? "" : "opacity-50"}`}
                             />
+                            {agentEmoji && (
+                              <span className="text-xs flex-shrink-0" title={sessionAgent?.name}>
+                                {agentEmoji}
+                              </span>
+                            )}
                             <span className="truncate text-xs">
                               {formatSessionDate(s)}
                             </span>

@@ -33,6 +33,7 @@ export interface SessionInfo {
   size: number;
   modifiedAt: string;
   startedAt?: string;
+  agentId?: string;
   meta: { key?: string; [k: string]: unknown };
 }
 
@@ -89,12 +90,14 @@ export async function getSession(id: string): Promise<SessionDetail> {
 /**
  * Derive session type from meta.key or other heuristics.
  * For sessions without metadata, tries to infer type from available info.
+ * Handles multi-agent keys like "agent:dev:main", "agent:dev:subagent:uuid", etc.
  */
 export function getSessionType(
   meta?: { key?: string; isReset?: boolean; [k: string]: unknown }
 ): "main" | "subagent" | "cron" | "slash" | "unknown" {
   const key = meta?.key || "";
-  if (key === "agent:main:main") return "main";
+  // Handle both agent:main:main and agent:dev:main patterns
+  if (/^agent:[^:]+:main$/.test(key)) return "main";
   if (key.includes(":subagent:")) return "subagent";
   if (key.includes(":cron:")) return "cron";
   if (key.includes(":slash:") || key.includes(":telegram:slash:")) return "slash";
@@ -103,6 +106,17 @@ export function getSessionType(
   if (!key && meta?.isReset) return "main";
 
   return "unknown";
+}
+
+/**
+ * Extract agent id from a session's meta.key.
+ * Keys follow the pattern "agent:<agentId>:<type>:..."
+ * Defaults to "main" if not parseable.
+ */
+export function getAgentId(meta?: { key?: string }): string {
+  const key = meta?.key || "";
+  const match = key.match(/^agent:([^:]+):/);
+  return match?.[1] || "main";
 }
 
 /**
