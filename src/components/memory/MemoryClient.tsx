@@ -33,6 +33,7 @@ import type {
   MemoryStatus,
   SessionInfo,
 } from "@/lib/memory-api";
+import { groupByTemporalBucket } from "@/lib/temporal-bucket";
 
 const HOME = process.env.NEXT_PUBLIC_HOME_DIR || "/Users/skadauke";
 
@@ -72,9 +73,13 @@ function parseDate(filename: string): Date | undefined {
 function formatSessionDate(s: SessionInfo): string {
   const dateStr = s.startedAt || s.modifiedAt;
   try {
-    return new Date(dateStr).toLocaleDateString("en-US", {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const includeYear = d.getFullYear() !== now.getFullYear();
+    return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
+      ...(includeYear ? { year: "numeric" } : {}),
     });
   } catch {
     return "";
@@ -337,30 +342,35 @@ export function MemoryClient() {
                   <span className="truncate">MEMORY.md</span>
                 </button>
 
-                {/* Daily files */}
-                {memoryFiles.map((f) => (
-                  <button
-                    key={f.name}
-                    onClick={() => loadFile(f.path, f.fullPath)}
-                    className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
-                      view.kind === "file" && view.path === f.path
-                        ? "bg-zinc-800 text-zinc-200"
-                        : "text-zinc-400"
-                    }`}
-                  >
-                    <FileText className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="truncate">{f.name}</span>
-                    {f.date && (
-                      <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">
-                        {relativeDate(f.date)}
-                      </span>
-                    )}
-                  </button>
-                ))}
-                {memoryFiles.length === 0 && (
+                {/* Daily files grouped by date */}
+                {memoryFiles.length === 0 ? (
                   <p className="text-xs text-zinc-600 px-2 py-1">
                     No daily notes found
                   </p>
+                ) : (
+                  groupByTemporalBucket(memoryFiles, (f) => f.date).map(
+                    ({ bucket, items }) => (
+                      <div key={bucket}>
+                        <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
+                          {bucket}
+                        </div>
+                        {items.map((f) => (
+                          <button
+                            key={f.name}
+                            onClick={() => loadFile(f.path, f.fullPath)}
+                            className={`flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
+                              view.kind === "file" && view.path === f.path
+                                ? "bg-zinc-800 text-zinc-200"
+                                : "text-zinc-400"
+                            }`}
+                          >
+                            <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span className="truncate">{f.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  )
                 )}
               </div>
             )}
@@ -384,67 +394,81 @@ export function MemoryClient() {
             </button>
             {sessionsOpen && (
               <div className="space-y-0.5 mt-1 max-h-80 overflow-y-auto">
-                {sessions.map((s) => {
-                  const st = getSessionType(s.meta);
-                  const isMain = st === "main";
-                  const typeLabel =
-                    st === "main"
-                      ? "Main"
-                      : st === "subagent"
-                        ? "Sub"
-                        : st === "cron"
-                          ? "Cron"
-                          : st === "slash"
-                            ? "Slash"
-                            : null; // No badge for unknown/other sessions
-                  const typeBadgeClass =
-                    st === "main"
-                      ? "border-blue-800 text-blue-400"
-                      : st === "subagent"
-                        ? "border-purple-800 text-purple-500"
-                        : st === "cron"
-                          ? "border-amber-800 text-amber-500"
-                          : st === "slash"
-                            ? "border-green-800 text-green-500"
-                            : "border-zinc-700 text-zinc-500";
-
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => handleSelectSession(s)}
-                      title={s.meta?.key || s.id}
-                      className={`flex items-center gap-1.5 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
-                        view.kind === "session" && view.id === s.id
-                          ? "bg-zinc-800 text-zinc-200"
-                          : isMain
-                            ? "text-zinc-400"
-                            : "text-zinc-600"
-                      }`}
-                    >
-                      <MessageSquare
-                        className={`h-3.5 w-3.5 flex-shrink-0 ${isMain ? "" : "opacity-50"}`}
-                      />
-                      <span className="truncate text-xs">
-                        {formatSessionDate(s)}
-                      </span>
-                      {typeLabel && (
-                        <Badge
-                          variant="outline"
-                          className={`text-[9px] px-1 py-0 h-4 ${typeBadgeClass}`}
-                        >
-                          {typeLabel}
-                        </Badge>
-                      )}
-                      <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">
-                        {formatBytes(s.size)}
-                      </span>
-                    </button>
-                  );
-                })}
-                {sessions.length === 0 && (
+                {sessions.length === 0 ? (
                   <p className="text-xs text-zinc-600 px-2 py-1">
                     No sessions found
                   </p>
+                ) : (
+                  groupByTemporalBucket(
+                    sessions,
+                    (s) => {
+                      const dateStr = s.startedAt || s.modifiedAt;
+                      try { return new Date(dateStr); } catch { return undefined; }
+                    }
+                  ).map(({ bucket, items }) => (
+                    <div key={bucket}>
+                      <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
+                        {bucket}
+                      </div>
+                      {items.map((s) => {
+                        const st = getSessionType(s.meta);
+                        const isMain = st === "main";
+                        const typeLabel =
+                          st === "main"
+                            ? "Main"
+                            : st === "subagent"
+                              ? "Sub"
+                              : st === "cron"
+                                ? "Cron"
+                                : st === "slash"
+                                  ? "Slash"
+                                  : null;
+                        const typeBadgeClass =
+                          st === "main"
+                            ? "border-blue-800 text-blue-400"
+                            : st === "subagent"
+                              ? "border-purple-800 text-purple-500"
+                              : st === "cron"
+                                ? "border-amber-800 text-amber-500"
+                                : st === "slash"
+                                  ? "border-green-800 text-green-500"
+                                  : "border-zinc-700 text-zinc-500";
+
+                        return (
+                          <button
+                            key={s.id}
+                            onClick={() => handleSelectSession(s)}
+                            title={s.meta?.key || s.id}
+                            className={`flex items-center gap-1.5 w-full px-2 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors ${
+                              view.kind === "session" && view.id === s.id
+                                ? "bg-zinc-800 text-zinc-200"
+                                : isMain
+                                  ? "text-zinc-400"
+                                  : "text-zinc-600"
+                            }`}
+                          >
+                            <MessageSquare
+                              className={`h-3.5 w-3.5 flex-shrink-0 ${isMain ? "" : "opacity-50"}`}
+                            />
+                            <span className="truncate text-xs">
+                              {formatSessionDate(s)}
+                            </span>
+                            {typeLabel && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] px-1 py-0 h-4 ${typeBadgeClass}`}
+                              >
+                                {typeLabel}
+                              </Badge>
+                            )}
+                            <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">
+                              {formatBytes(s.size)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))
                 )}
               </div>
             )}
