@@ -244,7 +244,12 @@ app.get('/health', (req, res) => {
 // ─── Memory Search Endpoints ────────────────────────────────────────
 
 const MEMORY_DB = `${HOME}/.openclaw/memory/main.sqlite`;
-const SESSIONS_DIR = `${HOME}/.openclaw/agents/main/sessions`;
+// Dynamic sessions directory based on agent ID
+function getSessionsDir(agentId) {
+  // Validate agent ID to prevent path traversal
+  const safeId = (agentId || 'main').replace(/[^a-zA-Z0-9_-]/g, '');
+  return `${HOME}/.openclaw/agents/${safeId}/sessions`;
+}
 
 // Lazy-load better-sqlite3
 let _db = null;
@@ -339,11 +344,12 @@ app.get('/memory/status', authenticate, async (req, res) => {
 // GET /memory/sessions — List sessions with metadata
 app.get('/memory/sessions', authenticate, async (req, res) => {
   try {
-    const sessionsFile = path.join(SESSIONS_DIR, 'sessions.json');
+    const sessionsDir = getSessionsDir(req.query.agent);
+    const sessionsFile = path.join(sessionsDir, 'sessions.json');
     const data = JSON.parse(await fs.readFile(sessionsFile, 'utf-8'));
     
     // Get session files with sizes
-    const files = await fs.readdir(SESSIONS_DIR);
+    const files = await fs.readdir(sessionsDir);
     // Include .jsonl files and .reset files (but not .deleted)
     const sessionFiles = files.filter(f => {
       if (f.includes('.deleted')) return false;
@@ -381,7 +387,7 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
     for (const file of sessionFiles.filter(f => f.endsWith('.jsonl'))) {
       const sessionId = file.replace('.jsonl', '');
       seenIds.add(sessionId);
-      const fullPath = path.join(SESSIONS_DIR, file);
+      const fullPath = path.join(sessionsDir, file);
       const stat = await fs.stat(fullPath);
       
       let meta = null;
@@ -413,7 +419,7 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
       if (seenIds.has(sessionId)) continue;
       seenIds.add(sessionId);
       
-      const fullPath = path.join(SESSIONS_DIR, file);
+      const fullPath = path.join(sessionsDir, file);
       const stat = await fs.stat(fullPath);
       
       let meta = null;
@@ -448,7 +454,8 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
 // GET /memory/session/:id — Parse session transcript into messages
 app.get('/memory/session/:id', authenticate, async (req, res) => {
   const sessionId = req.params.id;
-  const filePath = path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  const sessionsDir = getSessionsDir(req.query.agent);
+  const filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
   
   // Security: validate session ID format (UUID only)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
@@ -460,11 +467,19 @@ app.get('/memory/session/:id', authenticate, async (req, res) => {
     try {
       await fs.access(filePath);
     } catch {
-      // If the .jsonl file doesn't exist, look for a .reset file
-      const dirFiles = await fs.readdir(SESSIONS_DIR);
-      const resetFile = dirFiles.find(f => f.startsWith(`${sessionId}.jsonl.reset.`));
-      if (resetFile) {
-        actualPath = path.join(SESSIONS_DIR, resetFile);
+      // If the .jsonl file doesn't exist, try alternatives
+      const dirFiles = await fs.readdir(sessionsDir);
+      
+      // Try topic-suffixed files: {uuid}-topic-{n}.jsonl
+      const topicFile = dirFiles.find(f => f.startsWith(`${sessionId}-`) && f.endsWith('.jsonl'));
+      if (topicFile) {
+        actualPath = path.join(sessionsDir, topicFile);
+      } else {
+        // Try reset/rotated files: {uuid}.jsonl.reset.{timestamp}
+        const resetFile = dirFiles.find(f => f.startsWith(`${sessionId}.jsonl.reset.`));
+        if (resetFile) {
+          actualPath = path.join(sessionsDir, resetFile);
+        }
       }
     }
     const content = await fs.readFile(actualPath, 'utf-8');
