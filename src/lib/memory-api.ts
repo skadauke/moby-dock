@@ -34,6 +34,7 @@ export interface SessionInfo {
   modifiedAt: string;
   startedAt?: string;
   agentId?: string;
+  sessionFile?: string;
   meta: { key?: string; [k: string]: unknown };
 }
 
@@ -81,10 +82,12 @@ export async function listSessions(): Promise<SessionInfo[]> {
   return data.sessions;
 }
 
-export async function getSession(id: string): Promise<SessionDetail> {
-  return fetchApi<SessionDetail>(
-    `/api/memory/sessions/${encodeURIComponent(id)}`
-  );
+export async function getSession(id: string, sessionFile?: string): Promise<SessionDetail> {
+  const base = `/api/memory/sessions/${encodeURIComponent(id)}`;
+  const url = sessionFile
+    ? `${base}?file=${encodeURIComponent(sessionFile)}`
+    : base;
+  return fetchApi<SessionDetail>(url);
 }
 
 /**
