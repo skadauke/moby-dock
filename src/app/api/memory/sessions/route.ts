@@ -99,7 +99,7 @@ export async function GET() {
         deduped.set(s.id, s);
       } else {
         // Prefer the session whose agentId matches its meta.key
-        const key = (s.meta?.key as string) || "";
+        const key = typeof s.meta?.key === "string" ? s.meta.key : "";
         if (key.startsWith(`agent:${s.agentId}:`)) {
           deduped.set(s.id, s);
         }
