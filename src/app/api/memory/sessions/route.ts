@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { checkApiAuth } from "@/lib/api-auth";
 
@@ -20,13 +21,33 @@ interface OpenClawConfig {
   };
 }
 
-interface SessionFromServer {
+interface SessionIndexEntry {
+  sessionId: string;
+  updatedAt: number;
+  sessionFile?: string;
+  displayName?: string;
+  chatType?: string;
+  channel?: string;
+  subject?: string;
+  groupId?: string;
+  [k: string]: unknown;
+}
+
+interface SessionInfo {
   id: string;
   file: string;
   size: number;
   modifiedAt: string;
   startedAt?: string;
-  meta: { key?: string; [k: string]: unknown };
+  agentId: string;
+  sessionFile?: string;
+  meta: {
+    key: string;
+    displayName?: string;
+    subject?: string;
+    channel?: string;
+    chatType?: string;
+  };
 }
 
 async function getAgentList(): Promise<AgentConfig[]> {
@@ -43,6 +64,24 @@ async function getAgentList(): Promise<AgentConfig[]> {
   return config.agents?.list ?? [];
 }
 
+async function readSessionsIndex(agentId: string): Promise<Record<string, SessionIndexEntry>> {
+  const sessionsJsonPath = `${HOME}/.openclaw/agents/${agentId}/sessions/sessions.json`;
+  const res = await fetch(
+    `${FILE_SERVER_URL}/files?path=${encodeURIComponent(sessionsJsonPath)}`,
+    {
+      headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+      signal: AbortSignal.timeout(15000),
+    }
+  );
+  if (!res.ok) return {};
+  const data = await res.json();
+  try {
+    return JSON.parse(data.content ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
 export async function GET() {
   const { authenticated } = await checkApiAuth();
   if (!authenticated) {
@@ -52,60 +91,56 @@ export async function GET() {
   try {
     const agents = await getAgentList();
 
-    // If no agents configured, fall back to default behavior
-    if (agents.length === 0) {
-      const res = await fetch(`${FILE_SERVER_URL}/memory/sessions`, {
-        headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        return NextResponse.json(
-          { error: err.error || "Failed to list sessions" },
-          { status: res.status }
-        );
-      }
-      return NextResponse.json(await res.json());
-    }
+    // If no agents configured, use a default "main" agent
+    const agentIds = agents.length > 0
+      ? agents.map((a) => a.id)
+      : ["main"];
 
-    // Fetch sessions from all agents in parallel
+    // Read sessions.json for all agents in parallel
     const allSessions = await Promise.all(
-      agents.map(async (agent) => {
+      agentIds.map(async (agentId) => {
         try {
-          const res = await fetch(
-            `${FILE_SERVER_URL}/memory/sessions?agent=${encodeURIComponent(agent.id)}`,
-            {
-              headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-              signal: AbortSignal.timeout(15000),
-            }
-          );
-          if (!res.ok) return [];
-          const data = await res.json();
-          const sessions: SessionFromServer[] = data.sessions || [];
-          return sessions.map((s) => ({ ...s, agentId: agent.id }));
+          const index = await readSessionsIndex(agentId);
+          const sessions: SessionInfo[] = [];
+
+          for (const [key, entry] of Object.entries(index)) {
+            // Filter out ephemeral sessions without a session file
+            if (!entry.sessionFile) continue;
+
+            const modifiedAt = new Date(entry.updatedAt).toISOString();
+
+            sessions.push({
+              id: entry.sessionId,
+              file: path.basename(entry.sessionFile),
+              size: 0,
+              modifiedAt,
+              startedAt: modifiedAt,
+              agentId,
+              sessionFile: entry.sessionFile,
+              meta: {
+                key,
+                displayName: entry.displayName,
+                subject: entry.subject,
+                channel: entry.channel,
+                chatType: entry.chatType,
+              },
+            });
+          }
+
+          return sessions;
         } catch {
           return [];
         }
       })
     );
 
-    const merged = allSessions.flat();
-
-    // Deduplicate sessions by id — prefer the entry whose agentId matches meta.key
-    const deduped = new Map<string, (typeof merged)[0]>();
-    for (const s of merged) {
-      const existing = deduped.get(s.id);
-      if (!existing) {
-        deduped.set(s.id, s);
-      } else {
-        // Prefer the session whose agentId matches its meta.key
-        const key = typeof s.meta?.key === "string" ? s.meta.key : "";
-        if (key.startsWith(`agent:${s.agentId}:`)) {
-          deduped.set(s.id, s);
-        }
-      }
-    }
-    const sessions = Array.from(deduped.values());
+    // Merge and sort by updatedAt descending
+    const sessions = allSessions
+      .flat()
+      .sort(
+        (a, b) =>
+          new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+      );
 
     return NextResponse.json({ sessions });
   } catch {
