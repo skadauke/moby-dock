@@ -1,10 +1,11 @@
+import { homedir } from "node:os";
 import { NextResponse } from "next/server";
 import { checkApiAuth } from "@/lib/api-auth";
 
 const FILE_SERVER_URL =
   process.env.FILE_SERVER_URL || "https://files.skadauke.dev";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
-const HOME = process.env.NEXT_PUBLIC_HOME_DIR || "/Users/skadauke";
+const HOME = process.env.HOME_DIR || process.env.HOME || homedir();
 
 interface AgentConfig {
   id: string;
@@ -29,20 +30,21 @@ export interface AgentInfo {
 }
 
 async function readFileFromServer(filePath: string): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `${FILE_SERVER_URL}/files?path=${encodeURIComponent(filePath)}`,
-      {
-        headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-        signal: AbortSignal.timeout(10000),
-      }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.content ?? null;
-  } catch {
-    return null;
+  const res = await fetch(
+    `${FILE_SERVER_URL}/files?path=${encodeURIComponent(filePath)}`,
+    {
+      headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+      signal: AbortSignal.timeout(10000),
+    }
+  );
+
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`File server returned ${res.status} for ${filePath}`);
   }
+
+  const data = await res.json();
+  return data.content ?? null;
 }
 
 function parseEmoji(identityContent: string): string | undefined {
