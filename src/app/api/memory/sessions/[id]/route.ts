@@ -5,23 +5,6 @@ const FILE_SERVER_URL =
   process.env.FILE_SERVER_URL || "https://files.skadauke.dev";
 const FILE_SERVER_TOKEN = process.env.MOBY_FILE_SERVER_TOKEN || "";
 
-/**
- * Parse JSONL content into session messages.
- */
-function parseJsonlMessages(content: string) {
-  const lines = content.split("\n").filter((l) => l.trim());
-  const messages = [];
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      if (obj.role) messages.push(obj);
-    } catch {
-      /* skip malformed lines */
-    }
-  }
-  return messages;
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,38 +15,14 @@ export async function GET(
   }
 
   const { id } = await params;
-  const fileParam = request.nextUrl.searchParams.get("file");
+  const agent = request.nextUrl.searchParams.get("agent") || "";
+  const agentParam = agent
+    ? `?agent=${encodeURIComponent(agent)}`
+    : "";
 
-  // If a file path is provided, read it directly via the file-read API
-  if (fileParam) {
-    try {
-      const res = await fetch(
-        `${FILE_SERVER_URL}/files?path=${encodeURIComponent(fileParam)}`,
-        {
-          headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-          signal: AbortSignal.timeout(30000),
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.content ?? "";
-        const messages = parseJsonlMessages(content);
-        return NextResponse.json({
-          sessionId: id,
-          messageCount: messages.length,
-          messages,
-        });
-      }
-      // If direct file read fails, fall through to legacy endpoint
-    } catch {
-      // Fall through to legacy endpoint
-    }
-  }
-
-  // Fallback: try the legacy /memory/session/<id> endpoint
   try {
     const res = await fetch(
-      `${FILE_SERVER_URL}/memory/session/${encodeURIComponent(id)}`,
+      `${FILE_SERVER_URL}/memory/session/${encodeURIComponent(id)}${agentParam}`,
       {
         headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
         signal: AbortSignal.timeout(30000),
