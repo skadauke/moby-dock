@@ -361,7 +361,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
       setError(null);
       setVisibleCount(PAGE_SIZE);
       try {
-        const data = await getSession(sessionId, sessionInfo?.sessionFile);
+        const data = await getSession(sessionId, agentId);
         if (cancelled) return;
         setMessages(data.messages);
         setTotalCount(data.messageCount);
@@ -375,7 +375,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionInfo?.sessionFile]);
+  }, [sessionId, agentId]);
 
   // Reset search when highlightText changes
   useEffect(() => {

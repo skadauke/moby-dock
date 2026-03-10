@@ -1,5 +1,4 @@
 import { homedir } from "node:os";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import { checkApiAuth } from "@/lib/api-auth";
 
@@ -16,70 +15,28 @@ interface AgentConfig {
 }
 
 interface OpenClawConfig {
-  agents?: {
-    list?: AgentConfig[];
-  };
+  agents?: { list?: AgentConfig[] };
 }
 
-interface SessionIndexEntry {
-  sessionId: string;
-  updatedAt: number;
-  sessionFile?: string;
-  displayName?: string;
-  chatType?: string;
-  channel?: string;
-  subject?: string;
-  groupId?: string;
-  [k: string]: unknown;
-}
-
-interface SessionInfo {
-  id: string;
-  file: string;
-  size: number;
-  modifiedAt: string;
-  startedAt?: string;
-  agentId: string;
-  sessionFile?: string;
-  meta: {
-    key: string;
-    displayName?: string;
-    subject?: string;
-    channel?: string;
-    chatType?: string;
-  };
-}
-
-async function getAgentList(): Promise<AgentConfig[]> {
+async function readFileFromServer(filePath: string): Promise<string | null> {
   const res = await fetch(
-    `${FILE_SERVER_URL}/files?path=${encodeURIComponent(`${HOME}/.openclaw/openclaw.json`)}`,
+    `${FILE_SERVER_URL}/files?path=${encodeURIComponent(filePath)}`,
     {
       headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
       signal: AbortSignal.timeout(10000),
     }
   );
-  if (!res.ok) return [];
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`File server returned ${res.status}`);
   const data = await res.json();
-  const config: OpenClawConfig = JSON.parse(data.content ?? "{}");
-  return config.agents?.list ?? [];
+  return data.content ?? null;
 }
 
-async function readSessionsIndex(agentId: string): Promise<Record<string, SessionIndexEntry>> {
-  const sessionsJsonPath = `${HOME}/.openclaw/agents/${agentId}/sessions/sessions.json`;
-  const res = await fetch(
-    `${FILE_SERVER_URL}/files?path=${encodeURIComponent(sessionsJsonPath)}`,
-    {
-      headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
-      signal: AbortSignal.timeout(15000),
-    }
-  );
-  if (!res.ok) return {};
-  const data = await res.json();
-  try {
-    return JSON.parse(data.content ?? "{}");
-  } catch {
-    return {};
-  }
+async function getAgentList(): Promise<AgentConfig[]> {
+  const content = await readFileFromServer(`${HOME}/.openclaw/openclaw.json`);
+  if (!content) return [];
+  const config: OpenClawConfig = JSON.parse(content);
+  return config.agents?.list ?? [];
 }
 
 export async function GET() {
@@ -91,61 +48,87 @@ export async function GET() {
   try {
     const agents = await getAgentList();
 
-    // If no agents configured, use a default "main" agent
-    const agentIds = agents.length > 0
-      ? agents.map((a) => a.id)
-      : ["main"];
+    if (agents.length === 0) {
+      // Fallback: no agent config, use default
+      const res = await fetch(`${FILE_SERVER_URL}/memory/sessions`, {
+        headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        return NextResponse.json(
+          { error: err.error || "Failed" },
+          { status: res.status }
+        );
+      }
+      return NextResponse.json(await res.json());
+    }
 
-    // Read sessions.json for all agents in parallel
-    const allSessions = await Promise.all(
-      agentIds.map(async (agentId) => {
+    // Fetch sessions from all agents in parallel
+    const allResults = await Promise.all(
+      agents.map(async (agent) => {
         try {
-          const index = await readSessionsIndex(agentId);
-          const sessions: SessionInfo[] = [];
-
-          for (const [key, entry] of Object.entries(index)) {
-            // Filter out ephemeral sessions without a session file
-            if (!entry.sessionFile) continue;
-
-            const modifiedAt = new Date(entry.updatedAt).toISOString();
-
-            sessions.push({
-              id: entry.sessionId,
-              file: path.basename(entry.sessionFile),
-              size: 0,
-              modifiedAt,
-              startedAt: modifiedAt,
-              agentId,
-              sessionFile: entry.sessionFile,
-              meta: {
-                key,
-                displayName: entry.displayName,
-                subject: entry.subject,
-                channel: entry.channel,
-                chatType: entry.chatType,
-              },
-            });
+          const res = await fetch(
+            `${FILE_SERVER_URL}/memory/sessions?agent=${encodeURIComponent(agent.id)}`,
+            {
+              headers: { Authorization: `Bearer ${FILE_SERVER_TOKEN}` },
+              signal: AbortSignal.timeout(15000),
+            }
+          );
+          if (!res.ok) {
+            console.error(`Failed to fetch sessions for agent ${agent.id}: ${res.status}`);
+            return { sessions: [] as Record<string, unknown>[], error: `Agent ${agent.id}: ${res.status}` };
           }
-
-          return sessions;
-        } catch {
-          return [];
+          const data = await res.json();
+          const sessions = data.sessions || [];
+          return {
+            sessions: sessions.map((s: Record<string, unknown>) => ({
+              ...s,
+              agentId: agent.id,
+            })),
+            error: null,
+          };
+        } catch (err) {
+          console.error(`Failed to fetch sessions for agent ${agent.id}:`, err);
+          return {
+            sessions: [] as Record<string, unknown>[],
+            error: `Agent ${agent.id}: ${err instanceof Error ? err.message : "Unknown"}`,
+          };
         }
       })
     );
 
-    // Merge and sort by updatedAt descending
-    const sessions = allSessions
-      .flat()
-      .sort(
-        (a, b) =>
-          new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
-      );
+    const errors = allResults.filter((r) => r.error).map((r) => r.error);
 
-    return NextResponse.json({ sessions });
+    // If ALL agents failed, return error
+    if (errors.length === agents.length && agents.length > 0) {
+      return NextResponse.json(
+        { error: `All agents failed: ${errors.join("; ")}` },
+        { status: 500 }
+      );
+    }
+
+    const merged = allResults.flatMap((r) => r.sessions);
+
+    // Deduplicate by session id
+    const deduped = new Map<string, (typeof merged)[0]>();
+    for (const s of merged) {
+      const existing = deduped.get(s.id as string);
+      if (!existing) {
+        deduped.set(s.id as string, s);
+      } else {
+        const meta = s.meta as Record<string, unknown> | undefined;
+        const key = typeof meta?.key === "string" ? meta.key : "";
+        if (key.startsWith(`agent:${s.agentId}:`)) {
+          deduped.set(s.id as string, s);
+        }
+      }
+    }
+
+    return NextResponse.json({ sessions: Array.from(deduped.values()) });
   } catch {
     return NextResponse.json(
-      { error: "Failed to connect to file server" },
+      { error: "Failed to connect" },
       { status: 500 }
     );
   }

@@ -82,12 +82,11 @@ export async function listSessions(): Promise<SessionInfo[]> {
   return data.sessions;
 }
 
-export async function getSession(id: string, sessionFile?: string): Promise<SessionDetail> {
-  const base = `/api/memory/sessions/${encodeURIComponent(id)}`;
-  const url = sessionFile
-    ? `${base}?file=${encodeURIComponent(sessionFile)}`
-    : base;
-  return fetchApi<SessionDetail>(url);
+export async function getSession(id: string, agentId?: string): Promise<SessionDetail> {
+  const agentParam = agentId ? `&agent=${encodeURIComponent(agentId)}` : "";
+  return fetchApi<SessionDetail>(
+    `/api/memory/sessions/${encodeURIComponent(id)}?_=1${agentParam}`
+  );
 }
 
 /**
