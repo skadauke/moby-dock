@@ -48,6 +48,7 @@ const SOURCES = [
   { value: "", label: "All" },
   { value: "gateway", label: "Gateway" },
   { value: "fileserver", label: "File Server" },
+  { value: "moby-dock", label: "Moby Dock" },
 ] as const;
 
 const TIME_RANGES = [
