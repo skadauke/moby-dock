@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { NextResponse } from "next/server";
+import { Logger } from "next-axiom";
 import { checkApiAuth } from "@/lib/api-auth";
 
 const FILE_SERVER_URL =
@@ -54,16 +55,24 @@ function parseEmoji(identityContent: string): string | undefined {
 }
 
 export async function GET() {
+  const log = new Logger({ source: "api/agents" });
   const { authenticated } = await checkApiAuth();
   if (!authenticated) {
+    log.warn("Unauthorized agents list attempt");
+    await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  log.info("GET /api/agents");
+
   try {
+    const startTime = Date.now();
     const configContent = await readFileFromServer(
       `${HOME}/.openclaw/openclaw.json`
     );
     if (!configContent) {
+      log.error("Failed to read openclaw.json");
+      await log.flush();
       return NextResponse.json(
         { error: "Failed to read openclaw.json" },
         { status: 500 }
@@ -74,6 +83,8 @@ export async function GET() {
     const agentList = config.agents?.list ?? [];
 
     if (agentList.length === 0) {
+      log.info("No agents configured");
+      await log.flush();
       return NextResponse.json({ agents: [] });
     }
 
@@ -97,10 +108,15 @@ export async function GET() {
       })
     );
 
+    const duration = Date.now() - startTime;
+    log.info("GET /api/agents success", { count: agents.length, duration });
+    await log.flush();
     return NextResponse.json({ agents });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown error";
+    log.error("Failed to discover agents", { error: message });
+    await log.flush();
     return NextResponse.json(
       { error: `Failed to discover agents: ${message}` },
       { status: 500 }
