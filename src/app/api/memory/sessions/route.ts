@@ -65,7 +65,7 @@ export async function GET() {
     }
 
     // Fetch sessions from all agents in parallel
-    const allSessions = await Promise.all(
+    const allResults = await Promise.all(
       agents.map(async (agent) => {
         try {
           const res = await fetch(
@@ -75,20 +75,40 @@ export async function GET() {
               signal: AbortSignal.timeout(15000),
             }
           );
-          if (!res.ok) return [];
+          if (!res.ok) {
+            console.error(`Failed to fetch sessions for agent ${agent.id}: ${res.status}`);
+            return { sessions: [] as Record<string, unknown>[], error: `Agent ${agent.id}: ${res.status}` };
+          }
           const data = await res.json();
           const sessions = data.sessions || [];
-          return sessions.map((s: Record<string, unknown>) => ({
-            ...s,
-            agentId: agent.id,
-          }));
-        } catch {
-          return [];
+          return {
+            sessions: sessions.map((s: Record<string, unknown>) => ({
+              ...s,
+              agentId: agent.id,
+            })),
+            error: null,
+          };
+        } catch (err) {
+          console.error(`Failed to fetch sessions for agent ${agent.id}:`, err);
+          return {
+            sessions: [] as Record<string, unknown>[],
+            error: `Agent ${agent.id}: ${err instanceof Error ? err.message : "Unknown"}`,
+          };
         }
       })
     );
 
-    const merged = allSessions.flat();
+    const errors = allResults.filter((r) => r.error).map((r) => r.error);
+
+    // If ALL agents failed, return error
+    if (errors.length === agents.length && agents.length > 0) {
+      return NextResponse.json(
+        { error: `All agents failed: ${errors.join("; ")}` },
+        { status: 500 }
+      );
+    }
+
+    const merged = allResults.flatMap((r) => r.sessions);
 
     // Deduplicate by session id
     const deduped = new Map<string, (typeof merged)[0]>();

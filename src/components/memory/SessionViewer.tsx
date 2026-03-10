@@ -361,7 +361,6 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
       setError(null);
       setVisibleCount(PAGE_SIZE);
       try {
-        const agentId = sessionInfo?.agentId ?? getAgentId(sessionInfo?.meta);
         const data = await getSession(sessionId, agentId);
         if (cancelled) return;
         setMessages(data.messages);
@@ -376,7 +375,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionInfo?.agentId, sessionInfo?.meta]);
+  }, [sessionId, agentId]);
 
   // Reset search when highlightText changes
   useEffect(() => {

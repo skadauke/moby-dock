@@ -15,10 +15,8 @@ export async function GET(
   }
 
   const { id } = await params;
-  const agent = request.nextUrl.searchParams.get("agent") || "";
-  const agentParam = agent
-    ? `?agent=${encodeURIComponent(agent)}`
-    : "";
+  const agent = request.nextUrl.searchParams.get("agent") || "main";
+  const agentParam = `?agent=${encodeURIComponent(agent)}`;
 
   try {
     const res = await fetch(
