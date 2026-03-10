@@ -23,16 +23,24 @@ interface LogResponse {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-const LEVEL_STYLES: Record<string, { badge: string; text: string }> = {
-  error: { badge: "bg-red-500/20 text-red-400", text: "text-red-400" },
-  warn: { badge: "bg-amber-500/20 text-amber-400", text: "text-amber-400" },
-  info: { badge: "bg-blue-500/20 text-blue-400", text: "text-blue-400" },
-  debug: { badge: "bg-zinc-500/20 text-zinc-500", text: "text-zinc-500" },
+const LEVEL_BORDER: Record<string, string> = {
+  error: "border-l-2 border-red-500",
+  warn: "border-l-2 border-amber-500",
+  info: "border-l-2 border-blue-500",
+  debug: "border-l-2 border-zinc-600",
 };
 
-const SOURCE_LABELS: Record<string, string> = {
-  gateway: "GW",
-  fileserver: "FS",
+const LEVEL_FILTER_STYLES: Record<string, { active: string }> = {
+  error: { active: "bg-red-500/20 text-red-400" },
+  warn: { active: "bg-amber-500/20 text-amber-400" },
+  info: { active: "bg-blue-500/20 text-blue-400" },
+  debug: { active: "bg-zinc-500/20 text-zinc-500" },
+};
+
+const SOURCE_STYLES: Record<string, string> = {
+  gateway: "text-purple-400",
+  fileserver: "text-cyan-400",
+  "moby-dock": "text-emerald-400",
 };
 
 const LEVELS = ["error", "warn", "info", "debug"] as const;
@@ -42,33 +50,31 @@ const SOURCES = [
   { value: "fileserver", label: "File Server" },
 ] as const;
 
+const TIME_RANGES = [
+  { label: "Last 5m", value: 5 * 60 * 1000 },
+  { label: "Last 15m", value: 15 * 60 * 1000 },
+  { label: "Last 1h", value: 60 * 60 * 1000 },
+  { label: "Last 6h", value: 6 * 60 * 60 * 1000 },
+  { label: "Last 24h", value: 24 * 60 * 60 * 1000 },
+  { label: "Last 7d", value: 7 * 24 * 60 * 60 * 1000 },
+  { label: "All", value: 0 },
+] as const;
+
+const DEFAULT_RANGE_INDEX = 2; // "Last 1h"
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function isToday(date: Date): boolean {
-  const now = new Date();
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  );
-}
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
-  if (isToday(d)) {
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-    const ms = String(d.getMilliseconds()).padStart(3, "0");
-    return `${hh}:${mm}:${ss}.${ms}`;
-  }
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const mon = months[d.getMonth()];
+  const mon = MONTHS[d.getMonth()];
   const dd = String(d.getDate()).padStart(2, "0");
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${mon} ${dd} ${hh}:${mm}:${ss}`;
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${mon} ${dd} ${hh}:${mm}:${ss}.${ms}`;
 }
 
 function hasData(data?: Record<string, unknown>): boolean {
@@ -89,8 +95,9 @@ export function LogClient() {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [timeRangeIndex, setTimeRangeIndex] = useState(DEFAULT_RANGE_INDEX);
 
-  // Expanded entries (by index)
+  // Expanded entries (by index) — only for data JSON
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -107,7 +114,17 @@ export function LogClient() {
       }
       if (searchQuery) params.set("search", searchQuery);
       if (opts?.before) params.set("before", opts.before);
-      if (opts?.after) params.set("after", opts.after);
+
+      // Time range — compute "after" unless an explicit after is given (prepend)
+      if (opts?.after) {
+        params.set("after", opts.after);
+      } else {
+        const range = TIME_RANGES[timeRangeIndex];
+        if (range.value > 0) {
+          params.set("after", new Date(Date.now() - range.value).toISOString());
+        }
+      }
+
       params.set("limit", "100");
 
       try {
@@ -129,7 +146,7 @@ export function LogClient() {
         // silently fail on network errors
       }
     },
-    [source, activeLevels, searchQuery]
+    [source, activeLevels, searchQuery, timeRangeIndex]
   );
 
   // ── Initial fetch + filter changes ────────────────────────────
@@ -245,7 +262,7 @@ export function LogClient() {
         <div className="flex items-center gap-1">
           {LEVELS.map((lvl) => {
             const active = activeLevels.has(lvl);
-            const style = LEVEL_STYLES[lvl];
+            const style = LEVEL_FILTER_STYLES[lvl];
             return (
               <Button
                 key={lvl}
@@ -254,7 +271,7 @@ export function LogClient() {
                 onClick={() => toggleLevel(lvl)}
                 className={
                   active
-                    ? `${style.badge} hover:opacity-80`
+                    ? `${style.active} hover:opacity-80`
                     : "text-zinc-500 hover:text-zinc-300"
                 }
               >
@@ -263,6 +280,22 @@ export function LogClient() {
             );
           })}
         </div>
+
+        {/* Divider */}
+        <div className="w-px h-5 bg-zinc-700" />
+
+        {/* Time range picker */}
+        <select
+          value={timeRangeIndex}
+          onChange={(e) => setTimeRangeIndex(Number(e.target.value))}
+          className="h-7 px-2 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+        >
+          {TIME_RANGES.map((r, i) => (
+            <option key={r.label} value={i}>
+              {r.label}
+            </option>
+          ))}
+        </select>
 
         {/* Divider */}
         <div className="w-px h-5 bg-zinc-700" />
@@ -321,69 +354,72 @@ export function LogClient() {
           <div className="font-mono text-xs">
             {entries.map((entry, i) => {
               const isExpanded = expanded.has(i);
-              const style = LEVEL_STYLES[entry.level] || LEVEL_STYLES.debug;
-              const srcLabel = SOURCE_LABELS[entry.source] || entry.source;
+              const borderClass = LEVEL_BORDER[entry.level] || LEVEL_BORDER.debug;
+              const sourceColor = SOURCE_STYLES[entry.source] || "text-zinc-400";
               const showData = hasData(entry.data);
 
               return (
-                <div key={`${entry.time}-${i}`}>
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(i)}
-                    className="w-full text-left px-4 py-1.5 hover:bg-zinc-800/50 flex items-start gap-2 cursor-pointer transition-colors"
+                <div key={`${entry.time}-${i}`} className={borderClass}>
+                  <div
+                    role={showData ? "button" : undefined}
+                    tabIndex={showData ? 0 : undefined}
+                    onClick={showData ? () => toggleExpand(i) : undefined}
+                    onKeyDown={
+                      showData
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              toggleExpand(i);
+                            }
+                          }
+                        : undefined
+                    }
+                    className={`px-4 py-1.5 hover:bg-zinc-800/50 flex items-start gap-2 transition-colors ${
+                      showData ? "cursor-pointer" : ""
+                    }`}
                   >
-                    {/* Expand indicator */}
-                    <span className="mt-0.5 text-zinc-600 shrink-0">
-                      {isExpanded ? (
-                        <ChevronDown className="h-3 w-3" />
-                      ) : (
-                        <ChevronRight className="h-3 w-3" />
-                      )}
-                    </span>
+                    {/* Expand indicator — only if data exists */}
+                    {showData ? (
+                      <span className="mt-0.5 text-zinc-600 shrink-0">
+                        {isExpanded ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 w-3" />
+                    )}
 
                     {/* Timestamp */}
-                    <span className="text-zinc-500 shrink-0 w-[90px]">
+                    <span className="text-zinc-500 shrink-0 whitespace-nowrap">
                       {formatTimestamp(entry.time)}
                     </span>
 
-                    {/* Level badge */}
-                    <span
-                      className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase leading-none ${style.badge}`}
-                    >
-                      {entry.level}
-                    </span>
-
-                    {/* Source badge */}
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-400 leading-none">
-                      {srcLabel}
+                    {/* Source */}
+                    <span className={`shrink-0 text-[11px] font-medium ${sourceColor}`}>
+                      {entry.source}
                     </span>
 
                     {/* Category */}
                     {entry.category && (
-                      <span className="shrink-0 text-zinc-600 text-[10px]">
+                      <span className="shrink-0 text-zinc-600 text-[11px]">
                         {entry.category}
                       </span>
                     )}
 
-                    {/* Message */}
-                    <span
-                      className={`text-zinc-300 ${isExpanded ? "" : "truncate"} min-w-0`}
-                    >
+                    {/* Message — always full, no truncation */}
+                    <span className="text-zinc-300 whitespace-pre-wrap break-words min-w-0">
                       {entry.message}
                     </span>
-                  </button>
+                  </div>
 
-                  {/* Expanded detail */}
-                  {isExpanded && (
-                    <div className="pl-[130px] pr-4 pb-2 text-zinc-400">
-                      <p className="whitespace-pre-wrap break-all text-zinc-300 mb-1">
-                        {entry.message}
-                      </p>
-                      {showData && (
-                        <pre className="mt-1 p-2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 overflow-x-auto text-[11px] leading-relaxed">
-                          {JSON.stringify(entry.data, null, 2)}
-                        </pre>
-                      )}
+                  {/* Expanded data JSON */}
+                  {isExpanded && showData && (
+                    <div className="pl-12 pr-4 pb-2">
+                      <pre className="p-2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 overflow-x-auto text-[11px] leading-relaxed">
+                        {JSON.stringify(entry.data, null, 2)}
+                      </pre>
                     </div>
                   )}
                 </div>
