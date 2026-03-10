@@ -129,9 +129,65 @@ export function LogClient() {
       params.set("limit", "100");
 
       try {
-        const res = await fetch(`/api/logs?${params.toString()}`);
-        if (!res.ok) return;
-        const data: LogResponse = await res.json();
+        // Determine which endpoints to fetch from
+        const fetchLocal = !source || source === "gateway" || source === "fileserver";
+        const fetchAxiom = !source || source === "moby-dock";
+
+        const promises: Promise<LogResponse | null>[] = [];
+
+        if (fetchLocal) {
+          promises.push(
+            fetch(`/api/logs?${params.toString()}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+          );
+        }
+
+        if (fetchAxiom) {
+          // Build Axiom params (no source param needed)
+          const axiomParams = new URLSearchParams();
+          if (activeLevels.size > 0) axiomParams.set("level", Array.from(activeLevels).join(","));
+          if (searchQuery) axiomParams.set("search", searchQuery);
+          if (opts?.before) axiomParams.set("before", opts.before);
+          if (opts?.after) {
+            axiomParams.set("after", opts.after);
+          } else {
+            const range = TIME_RANGES[timeRangeIndex];
+            if (range.value > 0) {
+              axiomParams.set("after", new Date(Date.now() - range.value).toISOString());
+            }
+          }
+          axiomParams.set("limit", "100");
+
+          promises.push(
+            fetch(`/api/logs/axiom?${axiomParams.toString()}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+          );
+        }
+
+        const results = await Promise.all(promises);
+
+        // Merge entries from all sources
+        let merged: LogEntry[] = [];
+        let anyHasMore = false;
+        for (const r of results) {
+          if (r) {
+            merged.push(...r.entries);
+            if (r.hasMore) anyHasMore = true;
+          }
+        }
+
+        // Sort by time descending
+        merged.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+        // Limit to 200 total
+        if (merged.length > 200) {
+          merged = merged.slice(0, 200);
+          anyHasMore = true;
+        }
+
+        const data: LogResponse = { entries: merged, hasMore: anyHasMore };
 
         if (opts?.append) {
           setEntries((prev) => [...prev, ...data.entries]);
