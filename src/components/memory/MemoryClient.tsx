@@ -172,14 +172,14 @@ export function MemoryClient() {
         .catch(() => {});
     }
 
-    // Load sessions (sort by startedAt if available, otherwise modifiedAt)
+    // Load sessions (sort by last activity so today's active sessions group together)
     listSessions()
       .then((s) =>
         setSessions(
           [...s].sort(
             (a, b) =>
-              new Date(b.startedAt || b.modifiedAt).getTime() -
-              new Date(a.startedAt || a.modifiedAt).getTime()
+              new Date(b.modifiedAt || b.startedAt || 0).getTime() -
+              new Date(a.modifiedAt || a.startedAt || 0).getTime()
           )
         )
       )
@@ -521,7 +521,7 @@ export function MemoryClient() {
                   groupByTemporalBucket(
                     sessions,
                     (s) => {
-                      const dateStr = s.startedAt || s.modifiedAt;
+                      const dateStr = s.modifiedAt || s.startedAt;
                       if (!dateStr) return undefined;
                       try {
                         const d = new Date(dateStr);
