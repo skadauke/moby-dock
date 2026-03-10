@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { NextResponse } from "next/server";
+import { Logger } from "next-axiom";
 import { checkApiAuth } from "@/lib/api-auth";
 
 const FILE_SERVER_URL =
@@ -40,12 +41,18 @@ async function getAgentList(): Promise<AgentConfig[]> {
 }
 
 export async function GET() {
+  const log = new Logger({ source: "api/memory/sessions" });
   const { authenticated } = await checkApiAuth();
   if (!authenticated) {
+    log.warn("Unauthorized sessions list attempt");
+    await log.flush();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  log.info("GET /api/memory/sessions");
+
   try {
+    const startTime = Date.now();
     const agents = await getAgentList();
 
     if (agents.length === 0) {
@@ -55,13 +62,19 @@ export async function GET() {
         signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
+        const resErr = await res.json().catch(() => ({ error: res.statusText }));
+        log.error("Failed to fetch sessions (no agents)", { status: res.status });
+        await log.flush();
         return NextResponse.json(
-          { error: err.error || "Failed" },
+          { error: resErr.error || "Failed" },
           { status: res.status }
         );
       }
-      return NextResponse.json(await res.json());
+      const data = await res.json();
+      const duration = Date.now() - startTime;
+      log.info("GET /api/memory/sessions success (fallback)", { duration });
+      await log.flush();
+      return NextResponse.json(data);
     }
 
     // Fetch sessions from all agents in parallel
@@ -76,7 +89,7 @@ export async function GET() {
             }
           );
           if (!res.ok) {
-            console.error(`Failed to fetch sessions for agent ${agent.id}: ${res.status}`);
+            log.error("Failed to fetch sessions for agent", { agentId: agent.id, status: res.status });
             return { sessions: [] as Record<string, unknown>[], error: `Agent ${agent.id}: ${res.status}` };
           }
           const data = await res.json();
@@ -88,11 +101,11 @@ export async function GET() {
             })),
             error: null,
           };
-        } catch (err) {
-          console.error(`Failed to fetch sessions for agent ${agent.id}:`, err);
+        } catch (fetchErr) {
+          log.error("Failed to fetch sessions for agent", { agentId: agent.id, error: fetchErr instanceof Error ? fetchErr.message : "Unknown" });
           return {
             sessions: [] as Record<string, unknown>[],
-            error: `Agent ${agent.id}: ${err instanceof Error ? err.message : "Unknown"}`,
+            error: `Agent ${agent.id}: ${fetchErr instanceof Error ? fetchErr.message : "Unknown"}`,
           };
         }
       })
@@ -102,6 +115,8 @@ export async function GET() {
 
     // If ALL agents failed, return error
     if (errors.length === agents.length && agents.length > 0) {
+      log.error("All agents failed to fetch sessions", { errors });
+      await log.flush();
       return NextResponse.json(
         { error: `All agents failed: ${errors.join("; ")}` },
         { status: 500 }
@@ -125,8 +140,13 @@ export async function GET() {
       }
     }
 
+    const duration = Date.now() - startTime;
+    log.info("GET /api/memory/sessions success", { count: deduped.size, agentCount: agents.length, duration });
+    await log.flush();
     return NextResponse.json({ sessions: Array.from(deduped.values()) });
-  } catch {
+  } catch (error) {
+    log.error("Failed to fetch sessions", { error: String(error) });
+    await log.flush();
     return NextResponse.json(
       { error: "Failed to connect" },
       { status: 500 }

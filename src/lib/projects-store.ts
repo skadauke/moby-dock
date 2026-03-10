@@ -1,6 +1,7 @@
 import { Project } from "@/types/kanban";
 import { createAdminClient } from "./supabase/server";
 import { Result, ok, err, DbError } from "./result";
+import { Logger } from "next-axiom";
 
 // Database row type
 interface ProjectRow {
@@ -26,6 +27,7 @@ function rowToProject(row: ProjectRow): Project {
 }
 
 export async function getAllProjects(): Promise<Result<Project[], DbError>> {
+  const log = new Logger({ source: "store/projects" });
   try {
     const supabase = createAdminClient();
     const { data, error } = await supabase
@@ -34,18 +36,22 @@ export async function getAllProjects(): Promise<Result<Project[], DbError>> {
       .order("position", { ascending: true });
 
     if (error) {
-      console.error("Failed to get projects:", error);
+      log.error("Failed to get projects", { error: error.message, code: error.code });
+      await log.flush();
       return err(new DbError(error.message, "CONNECTION"));
     }
 
+    await log.flush();
     return ok((data || []).map((row: ProjectRow) => rowToProject(row)));
   } catch (error) {
-    console.error("Failed to get projects:", error);
+    log.error("Failed to get projects", { error: String(error) });
+    await log.flush();
     return err(new DbError(String(error), "UNKNOWN"));
   }
 }
 
 export async function getProjectById(id: string): Promise<Result<Project, DbError>> {
+  const log = new Logger({ source: "store/projects" });
   try {
     const supabase = createAdminClient();
     const { data, error } = await supabase
@@ -56,19 +62,24 @@ export async function getProjectById(id: string): Promise<Result<Project, DbErro
 
     if (error) {
       if (error.code === "PGRST116") {
+        await log.flush();
         return err(new DbError("Project not found", "NOT_FOUND"));
       }
-      console.error("Failed to get project:", error);
+      log.error("Failed to get project", { error: error.message, code: error.code, projectId: id });
+      await log.flush();
       return err(new DbError(error.message, "CONNECTION"));
     }
 
     if (!data) {
+      await log.flush();
       return err(new DbError("Project not found", "NOT_FOUND"));
     }
 
+    await log.flush();
     return ok(rowToProject(data as ProjectRow));
   } catch (error) {
-    console.error("Failed to get project:", error);
+    log.error("Failed to get project", { error: String(error), projectId: id });
+    await log.flush();
     return err(new DbError(String(error), "UNKNOWN"));
   }
 }
@@ -78,6 +89,7 @@ export async function createProject(data: {
   description?: string;
   color?: string;
 }): Promise<Result<Project, DbError>> {
+  const log = new Logger({ source: "store/projects" });
   try {
     const supabase = createAdminClient();
 
@@ -89,7 +101,8 @@ export async function createProject(data: {
       .limit(1);
 
     if (posError) {
-      console.error("Failed to get max position:", posError);
+      log.error("Failed to get max position", { error: posError.message, code: posError.code });
+      await log.flush();
       return err(new DbError(posError.message, "CONNECTION"));
     }
 
@@ -107,17 +120,21 @@ export async function createProject(data: {
       .single();
 
     if (error) {
-      console.error("Failed to create project:", error);
+      log.error("Failed to create project", { error: error.message, code: error.code });
+      await log.flush();
       return err(new DbError(error.message, "CONNECTION"));
     }
 
     if (!newProject) {
+      await log.flush();
       return err(new DbError("Project created but no data returned", "UNKNOWN"));
     }
 
+    await log.flush();
     return ok(rowToProject(newProject as ProjectRow));
   } catch (error) {
-    console.error("Failed to create project:", error);
+    log.error("Failed to create project", { error: String(error) });
+    await log.flush();
     return err(new DbError(String(error), "UNKNOWN"));
   }
 }
@@ -131,6 +148,7 @@ export async function updateProject(
     position: number;
   }>
 ): Promise<Result<Project, DbError>> {
+  const log = new Logger({ source: "store/projects" });
   try {
     const supabase = createAdminClient();
 
@@ -141,6 +159,7 @@ export async function updateProject(
     if (data.position !== undefined) updates.position = data.position;
 
     if (Object.keys(updates).length === 0) {
+      await log.flush();
       return getProjectById(id);
     }
 
@@ -155,24 +174,30 @@ export async function updateProject(
 
     if (error) {
       if (error.code === "PGRST116") {
+        await log.flush();
         return err(new DbError("Project not found", "NOT_FOUND"));
       }
-      console.error("Failed to update project:", error);
+      log.error("Failed to update project", { error: error.message, code: error.code, projectId: id });
+      await log.flush();
       return err(new DbError(error.message, "CONNECTION"));
     }
 
     if (!updated) {
+      await log.flush();
       return err(new DbError("Project not found", "NOT_FOUND"));
     }
 
+    await log.flush();
     return ok(rowToProject(updated as ProjectRow));
   } catch (error) {
-    console.error("Failed to update project:", error);
+    log.error("Failed to update project", { error: String(error), projectId: id });
+    await log.flush();
     return err(new DbError(String(error), "UNKNOWN"));
   }
 }
 
 export async function deleteProject(id: string): Promise<Result<void, DbError>> {
+  const log = new Logger({ source: "store/projects" });
   try {
     const supabase = createAdminClient();
     
@@ -185,23 +210,28 @@ export async function deleteProject(id: string): Promise<Result<void, DbError>> 
       .select();
     
     if (error) {
-      console.error("Failed to delete project:", error);
+      log.error("Failed to delete project", { error: error.message, code: error.code, projectId: id });
+      await log.flush();
       return err(new DbError(error.message, "CONNECTION"));
     }
 
     // If no rows deleted, project didn't exist
     if (count === 0) {
+      await log.flush();
       return err(new DbError("Project not found", "NOT_FOUND"));
     }
 
+    await log.flush();
     return ok(undefined);
   } catch (error) {
-    console.error("Failed to delete project:", error);
+    log.error("Failed to delete project", { error: String(error), projectId: id });
+    await log.flush();
     return err(new DbError(String(error), "UNKNOWN"));
   }
 }
 
 export async function reorderProjects(projectIds: string[]): Promise<Result<void, DbError>> {
+  const log = new Logger({ source: "store/projects" });
   try {
     const supabase = createAdminClient();
     const now = new Date().toISOString();
@@ -217,13 +247,16 @@ export async function reorderProjects(projectIds: string[]): Promise<Result<void
     
     const failedUpdate = results.find(r => r.error);
     if (failedUpdate?.error) {
-      console.error("Failed to reorder projects:", failedUpdate.error);
+      log.error("Failed to reorder projects", { error: failedUpdate.error.message, code: failedUpdate.error.code });
+      await log.flush();
       return err(new DbError(failedUpdate.error.message, "CONNECTION"));
     }
 
+    await log.flush();
     return ok(undefined);
   } catch (error) {
-    console.error("Failed to reorder projects:", error);
+    log.error("Failed to reorder projects", { error: String(error) });
+    await log.flush();
     return err(new DbError(String(error), "UNKNOWN"));
   }
 }
