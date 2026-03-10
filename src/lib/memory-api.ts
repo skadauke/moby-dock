@@ -96,10 +96,11 @@ export async function getSession(id: string, agentId?: string): Promise<SessionD
  */
 export function getSessionType(
   meta?: { key?: string; isReset?: boolean; [k: string]: unknown }
-): "main" | "subagent" | "cron" | "slash" | "group" | "unknown" {
+): "main" | "subagent" | "cron" | "slash" | "group" | "topic" | "unknown" {
   const key = meta?.key || "";
   // Handle both agent:main:main and agent:dev:main patterns
   if (/^agent:[^:]+:main$/.test(key)) return "main";
+  if (key.includes(":topic:")) return "topic";
   if (key.includes(":telegram:group:")) return "group";
   if (key.includes(":subagent:")) return "subagent";
   if (key.includes(":cron:")) return "cron";

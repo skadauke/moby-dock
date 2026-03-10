@@ -487,7 +487,11 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
           ? "Cron"
           : sessionType === "slash"
             ? "Slash"
-            : null; // No badge for unknown
+            : sessionType === "group"
+              ? "Group"
+              : sessionType === "topic"
+                ? "Topic"
+                : null; // No badge for unknown
   const typeBadgeClass =
     sessionType === "main"
       ? "border-blue-700 text-blue-400"
@@ -497,7 +501,11 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
           ? "border-amber-700 text-amber-400"
           : sessionType === "slash"
             ? "border-green-700 text-green-400"
-            : "border-zinc-700 text-zinc-400";
+            : sessionType === "group" || sessionType === "topic"
+              ? "border-teal-700 text-teal-400"
+              : "border-zinc-700 text-zinc-400";
+
+  const topicNumber = (sessionInfo?.meta?.key as string)?.match(/:topic:(\d+)/)?.[1] || null;
 
   // Build set of matching message IDs for highlight
   const matchMsgIds = new Set(matchIndices.map((i) => messages[i]?.id));
@@ -524,8 +532,8 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
 
   return (
     <div ref={containerRef} className="flex flex-col h-full" tabIndex={-1}>
-      <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3 flex-wrap" title={sessionInfo?.meta?.key as string || ""}>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {agent?.emoji && (
             <span
               className="text-base"
@@ -541,17 +549,20 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
               {typeLabel}
             </Badge>
           )}
-          <span className="text-sm text-zinc-300">
-            {formatSessionDate(sessionInfo)}
+          {sessionInfo?.meta?.subject ? (
+            <span className="text-sm text-zinc-300">
+              {String(sessionInfo.meta.subject)}
+              {topicNumber && (
+                <span className="text-zinc-500"> &gt; Topic {topicNumber}</span>
+              )}
+            </span>
+          ) : null}
+          <span className={`text-sm ${sessionInfo?.meta?.subject ? "text-zinc-500" : "text-zinc-300"}`}>
+            {sessionInfo?.meta?.subject ? "·" : ""} {formatSessionDate(sessionInfo)}
           </span>
           <span className="text-xs text-zinc-500">
             {totalCount} message{totalCount !== 1 ? "s" : ""}
           </span>
-          {sessionInfo?.meta?.key && (
-            <span className="text-[10px] text-zinc-600 font-mono ml-auto truncate max-w-[200px]" title={sessionInfo.meta.key as string}>
-              {sessionInfo.meta.key as string}
-            </span>
-          )}
         </div>
 
         {/* Search bar */}
@@ -793,7 +804,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
                 }`}
               >
                 <div className="text-xs text-zinc-500 mb-1 flex items-center gap-2">
-                  <span>{isUser ? "User" : "Assistant"}</span>
+                  <span>{isUser ? "User" : (agent?.name || "Assistant")}</span>
                   {channelInfo && (
                     <Badge
                       variant="outline"
