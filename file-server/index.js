@@ -13,6 +13,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 const crypto = require('crypto');
+const logger = require('./logger');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,14 +41,53 @@ const READ_ONLY_PATHS = [
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Request logging middleware — runs on EVERY request
+app.use((req, res, next) => {
+  const start = Date.now();
+  
+  // Capture the original end to log after response
+  const originalEnd = res.end;
+  res.end = function(...args) {
+    const duration = Date.now() - start;
+    const authStatus = req.headers.authorization ? 'auth' : 'noauth';
+    logger.info(`${req.method} ${req.originalUrl}`, {
+      category: 'request',
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      duration,
+      authStatus,
+      ip: req.ip || req.connection?.remoteAddress,
+      contentLength: res.getHeader('content-length'),
+    });
+    originalEnd.apply(res, args);
+  };
+  
+  next();
+});
+
 // Auth middleware
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    logger.warn('Auth failed: missing authorization header', {
+      category: 'auth',
+      method: req.method,
+      path: req.originalUrl,
+      ip: req.ip || req.connection?.remoteAddress,
+      reason: 'missing_header',
+    });
     return res.status(401).json({ error: 'Missing authorization header' });
   }
   const token = authHeader.slice(7);
   if (token !== AUTH_TOKEN) {
+    logger.warn('Auth failed: invalid token', {
+      category: 'auth',
+      method: req.method,
+      path: req.originalUrl,
+      ip: req.ip || req.connection?.remoteAddress,
+      reason: 'invalid_token',
+    });
     return res.status(403).json({ error: 'Invalid token' });
   }
   next();
@@ -78,6 +118,7 @@ app.get('/files', authenticate, async (req, res) => {
   }
 
   if (!isPathAllowed(filePath)) {
+    logger.warn('Path not allowed', { category: 'security', path: filePath, method: req.method, reason: 'outside_allowlist' });
     return res.status(403).json({ error: 'Path not allowed' });
   }
 
@@ -95,7 +136,7 @@ app.get('/files', authenticate, async (req, res) => {
     if (err.code === 'ENOENT') {
       return res.status(404).json({ error: 'File not found' });
     }
-    console.error('Read error:', err);
+    logger.error('File read failed', { category: 'file', path: filePath, error: err.message });
     res.status(500).json({ error: 'Failed to read file' });
   }
 });
@@ -108,10 +149,12 @@ app.post('/files', authenticate, async (req, res) => {
   }
 
   if (!isPathAllowed(filePath)) {
+    logger.warn('Path not allowed', { category: 'security', path: filePath, method: req.method, reason: 'outside_allowlist' });
     return res.status(403).json({ error: 'Path not allowed' });
   }
 
   if (isPathReadOnly(filePath)) {
+    logger.warn('Write to read-only path blocked', { category: 'security', path: filePath, method: req.method, reason: 'read_only' });
     return res.status(403).json({ error: 'Path is read-only' });
   }
 
@@ -121,9 +164,10 @@ app.post('/files', authenticate, async (req, res) => {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, content, 'utf-8');
     
+    logger.info('File written', { category: 'file', path: filePath, size: content.length });
     res.json({ success: true });
   } catch (err) {
-    console.error('Write error:', err);
+    logger.error('File write failed', { category: 'file', path: filePath, error: err.message });
     res.status(500).json({ error: 'Failed to write file' });
   }
 });
@@ -136,22 +180,25 @@ app.delete('/files', authenticate, async (req, res) => {
   }
 
   if (!isPathAllowed(filePath)) {
+    logger.warn('Path not allowed', { category: 'security', path: filePath, method: req.method, reason: 'outside_allowlist' });
     return res.status(403).json({ error: 'Path not allowed' });
   }
 
   if (isPathReadOnly(filePath)) {
+    logger.warn('Write to read-only path blocked', { category: 'security', path: filePath, method: req.method, reason: 'read_only' });
     return res.status(403).json({ error: 'Path is read-only' });
   }
 
   try {
     const resolved = resolvePath(filePath);
     await fs.unlink(resolved);
+    logger.info('File deleted', { category: 'file', path: filePath });
     res.json({ success: true });
   } catch (err) {
     if (err.code === 'ENOENT') {
       return res.status(404).json({ error: 'File not found' });
     }
-    console.error('Delete error:', err);
+    logger.error('File delete failed', { category: 'file', path: filePath, error: err.message });
     res.status(500).json({ error: 'Failed to delete file' });
   }
 });
@@ -164,6 +211,7 @@ app.get('/files/list', authenticate, async (req, res) => {
   }
 
   if (!isPathAllowed(dirPath)) {
+    logger.warn('Path not allowed', { category: 'security', path: dirPath, method: req.method, reason: 'outside_allowlist' });
     return res.status(403).json({ error: 'Path not allowed' });
   }
 
@@ -183,7 +231,7 @@ app.get('/files/list', authenticate, async (req, res) => {
     if (err.code === 'ENOENT') {
       return res.status(404).json({ error: 'Directory not found' });
     }
-    console.error('List error:', err);
+    logger.error('Directory list failed', { category: 'file', path: dirPath, error: err.message });
     res.status(500).json({ error: 'Failed to list directory' });
   }
 });
@@ -196,6 +244,7 @@ app.get('/files/raw', authenticate, async (req, res) => {
   }
 
   if (!isPathAllowed(filePath)) {
+    logger.warn('Path not allowed', { category: 'security', path: filePath, method: req.method, reason: 'outside_allowlist' });
     return res.status(403).json({ error: 'Path not allowed' });
   }
 
@@ -231,7 +280,7 @@ app.get('/files/raw', authenticate, async (req, res) => {
     if (err.code === 'ENOENT') {
       return res.status(404).json({ error: 'File not found' });
     }
-    console.error('Raw file read error:', err);
+    logger.error('Raw file read failed', { category: 'file', path: filePath, error: err.message });
     res.status(500).json({ error: 'Failed to read file' });
   }
 });
@@ -260,13 +309,14 @@ function getMemoryDb() {
     _db = new Database(MEMORY_DB, { readonly: true });
     return _db;
   } catch (err) {
-    console.error('Failed to open memory DB:', err.message);
+    logger.error('Failed to open memory DB', { category: 'memory', error: err.message });
     return null;
   }
 }
 
 // GET /memory/search?q=<query>&limit=50
 app.get('/memory/search', authenticate, async (req, res) => {
+  const start = Date.now();
   const query = req.query.q;
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   
@@ -293,6 +343,7 @@ app.get('/memory/search', authenticate, async (req, res) => {
     `);
     
     const results = stmt.all(query, limit);
+    logger.info('Memory search', { category: 'memory', query, resultCount: results.length, duration: Date.now() - start });
     res.json({ results, total: results.length, query });
   } catch (err) {
     // FTS5 query syntax error — try wrapping in quotes for literal search
@@ -308,8 +359,10 @@ app.get('/memory/search', authenticate, async (req, res) => {
         LIMIT ?
       `);
       const results = stmt.all(`"${query.replace(/"/g, '""')}"`, limit);
+      logger.info('Memory search (literal fallback)', { category: 'memory', query, resultCount: results.length, duration: Date.now() - start });
       res.json({ results, total: results.length, query });
     } catch (err2) {
+      logger.error('Memory search failed', { category: 'memory', query, error: err2.message, duration: Date.now() - start });
       res.status(400).json({ error: 'Search failed', details: err2.message });
     }
   }
@@ -343,6 +396,7 @@ app.get('/memory/status', authenticate, async (req, res) => {
 
 // GET /memory/sessions — List sessions with metadata
 app.get('/memory/sessions', authenticate, async (req, res) => {
+  const start = Date.now();
   try {
     const sessionsDir = getSessionsDir(req.query.agent);
     const sessionsFile = path.join(sessionsDir, 'sessions.json');
@@ -385,7 +439,9 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
     
     // Process .jsonl files first
     for (const file of sessionFiles.filter(f => f.endsWith('.jsonl'))) {
-      const sessionId = file.replace('.jsonl', '');
+      // Extract UUID from filename (may have suffixes like -topic-2)
+      const uuidMatch = file.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      const sessionId = uuidMatch ? uuidMatch[1] : file.replace('.jsonl', '');
       seenIds.add(sessionId);
       const fullPath = path.join(sessionsDir, file);
       const stat = await fs.stat(fullPath);
@@ -445,14 +501,17 @@ app.get('/memory/sessions', authenticate, async (req, res) => {
     
     // Sort by modified date, newest first
     sessions.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
+    logger.info('Sessions listed', { category: 'memory', agent: req.query.agent || 'main', count: sessions.length, duration: Date.now() - start });
     res.json({ sessions });
   } catch (err) {
+    logger.error('Sessions list failed', { category: 'memory', error: err.message, duration: Date.now() - start });
     res.status(500).json({ error: err.message });
   }
 });
 
 // GET /memory/session/:id — Parse session transcript into messages
 app.get('/memory/session/:id', authenticate, async (req, res) => {
+  const start = Date.now();
   const sessionId = req.params.id;
   const sessionsDir = getSessionsDir(req.query.agent);
   const filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
@@ -523,11 +582,13 @@ app.get('/memory/session/:id', authenticate, async (req, res) => {
       }
     }
     
+    logger.info('Session loaded', { category: 'memory', sessionId, agent: req.query.agent || 'main', messageCount: messages.length, duration: Date.now() - start });
     res.json({ sessionId, messageCount: messages.length, messages });
   } catch (err) {
     if (err.code === 'ENOENT') {
       return res.status(404).json({ error: 'Session not found' });
     }
+    logger.error('Session load failed', { category: 'memory', sessionId, error: err.message, duration: Date.now() - start });
     res.status(500).json({ error: err.message });
   }
 });
@@ -635,6 +696,7 @@ app.post('/credentials/test', authenticate, async (req, res) => {
 // Uses /tools/invoke with sessions_send to deliver a message into Moby's active session.
 // The message text is constructed server-side (not user-supplied) to prevent prompt injection.
 app.post('/gateway/ping', authenticate, async (req, res) => {
+  const startTime = Date.now();
   const { message } = req.body;
   
   // Read gateway config
@@ -677,7 +739,7 @@ app.post('/gateway/ping', authenticate, async (req, res) => {
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gateway send failed:', response.status, errorText);
+      logger.error('Gateway send failed', { category: 'gateway', status: response.status, error: errorText });
       return res.status(response.status).json({ 
         error: 'Failed to notify Moby', 
         details: errorText 
@@ -687,17 +749,17 @@ app.post('/gateway/ping', authenticate, async (req, res) => {
     const data = await response.json();
     
     if (!data.ok) {
-      console.error('Gateway send error:', data.error);
+      logger.error('Gateway send error', { category: 'gateway', error: data.error?.message || 'Unknown error' });
       return res.status(500).json({ 
         error: 'Failed to notify Moby',
         details: data.error?.message || 'Unknown error',
       });
     }
     
-    console.log('Moby notified successfully');
+    logger.info('Gateway ping sent', { category: 'gateway', duration: Date.now() - startTime });
     res.json({ success: true });
   } catch (err) {
-    console.error('Gateway notify error:', err);
+    logger.error('Gateway ping failed', { category: 'gateway', error: err.message });
     res.status(500).json({ 
       error: 'Failed to notify Moby', 
       details: err.message 
@@ -707,6 +769,7 @@ app.post('/gateway/ping', authenticate, async (req, res) => {
 
 // POST /gateway/restart - Restart the OpenClaw gateway
 app.post('/gateway/restart', authenticate, async (req, res) => {
+  const startTime = Date.now();
   // Read gateway config to get the gateway URL
   const configPath = `${HOME}/.openclaw/openclaw.json`;
   
@@ -733,7 +796,7 @@ app.post('/gateway/restart', authenticate, async (req, res) => {
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gateway restart failed:', response.status, errorText);
+      logger.error('Gateway restart failed', { category: 'gateway', status: response.status, error: errorText });
       return res.status(response.status).json({ 
         error: 'Gateway restart failed', 
         details: errorText 
@@ -741,10 +804,10 @@ app.post('/gateway/restart', authenticate, async (req, res) => {
     }
     
     const data = await response.json();
-    console.log('Gateway restart succeeded:', data);
+    logger.info('Gateway restart succeeded', { category: 'gateway', duration: Date.now() - startTime });
     res.json({ success: true, ...data });
   } catch (err) {
-    console.error('Gateway restart error:', err);
+    logger.error('Gateway restart failed', { category: 'gateway', error: err.message });
     res.status(500).json({ 
       error: 'Failed to restart gateway', 
       details: err.message 
@@ -770,6 +833,7 @@ server.on('upgrade', (request, socket, head) => {
   // Auth check
   const token = url.searchParams.get('token');
   if (token !== AUTH_TOKEN) {
+    logger.warn('Terminal auth failed', { category: 'auth', reason: 'invalid_token' });
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
@@ -782,6 +846,7 @@ server.on('upgrade', (request, socket, head) => {
 
 wss.on('connection', (ws, request) => {
   if (terminalSessions.size >= MAX_TERMINAL_SESSIONS) {
+    logger.warn('Terminal session rejected: max sessions', { category: 'terminal', active: terminalSessions.size });
     ws.send(JSON.stringify({ type: 'error', error: 'Too many sessions' }));
     ws.close();
     return;
@@ -802,14 +867,14 @@ wss.on('connection', (ws, request) => {
       env: { ...process.env, TERM: 'xterm-256color' },
     });
   } catch (err) {
-    console.error('Failed to spawn PTY:', err);
+    logger.error('Terminal spawn failed', { category: 'terminal', error: err.message });
     ws.send(JSON.stringify({ type: 'error', error: 'Failed to spawn terminal' }));
     ws.close();
     return;
   }
 
   terminalSessions.set(sessionId, { pty: shell, ws });
-  console.log(`Terminal session ${sessionId} started (${terminalSessions.size} active)`);
+  logger.info('Terminal session started', { category: 'terminal', sessionId, active: terminalSessions.size });
 
   ws.send(JSON.stringify({ type: 'connected', id: sessionId }));
 
@@ -851,7 +916,7 @@ wss.on('connection', (ws, request) => {
   function cleanup() {
     clearInterval(pingInterval);
     terminalSessions.delete(sessionId);
-    console.log(`Terminal session ${sessionId} ended (${terminalSessions.size} active)`);
+    logger.info('Terminal session ended', { category: 'terminal', sessionId, active: terminalSessions.size });
     try { shell.kill(); } catch {}
     if (ws.readyState === ws.OPEN) ws.close();
   }
@@ -861,6 +926,5 @@ wss.on('connection', (ws, request) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`File server running on port ${PORT}`);
-  console.log('Allowed paths:', ALLOWED_PATHS);
+  logger.info('File server starting', { category: 'startup', port: PORT, allowedPaths: ALLOWED_PATHS });
 });
