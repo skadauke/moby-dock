@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Logger } from "next-axiom";
 import { checkApiAuth } from "@/lib/api-auth";
 
-const AXIOM_TOKEN = process.env.AXIOM_TOKEN;
-const AXIOM_DATASET = process.env.AXIOM_DATASET || "moby-dock.log";
+const AXIOM_TOKEN = process.env.AXIOM_TOKEN || process.env.NEXT_PUBLIC_AXIOM_TOKEN;
+const AXIOM_DATASET = process.env.AXIOM_DATASET || process.env.NEXT_PUBLIC_AXIOM_DATASET || "moby-dock.log";
 
 interface AxiomMatch {
   _time: string;
