@@ -85,7 +85,7 @@ export function LogClient() {
 
   // Filters
   const [source, setSource] = useState("");
-  const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
+  const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set(["error", "warn", "info"]));
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -103,10 +103,7 @@ export function LogClient() {
       const params = new URLSearchParams();
       if (source) params.set("source", source);
       if (activeLevels.size > 0) {
-        // Send each active level
-        for (const lvl of activeLevels) {
-          params.append("level", lvl);
-        }
+        params.set("level", Array.from(activeLevels).join(","));
       }
       if (searchQuery) params.set("search", searchQuery);
       if (opts?.before) params.set("before", opts.before);
