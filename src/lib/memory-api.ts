@@ -106,8 +106,9 @@ export function getSessionType(
   if (key.includes(":cron:")) return "cron";
   if (key.includes(":slash:") || key.includes(":telegram:slash:")) return "slash";
 
-  // If the session has no key but is a .reset file, it's likely a previous main session
+  // Sessions without a key — old rotated sessions, treat as main
   if (!key && meta?.isReset) return "main";
+  if (!key) return "main"; // Default: old sessions without metadata are main sessions
 
   return "unknown";
 }
