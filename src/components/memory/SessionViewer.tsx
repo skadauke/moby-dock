@@ -477,7 +477,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
     }
   }, [visibleCount, messages.length]);
 
-  const sessionType = getSessionType(sessionInfo?.meta);
+  const sessionType = getSessionType(sessionInfo?.meta, sessionInfo?.file);
   const typeLabel =
     sessionType === "main"
       ? "Main"

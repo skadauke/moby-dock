@@ -534,7 +534,7 @@ export function MemoryClient() {
                         {bucket}
                       </div>
                       {items.map((s) => {
-                        const st = getSessionType(s.meta);
+                        const st = getSessionType(s.meta, s.file);
                         const isMain = st === "main";
                         const sessionAgentId = s.agentId || getAgentId(s.meta);
                         const sessionAgent = agents.find((a) => a.id === sessionAgentId);
