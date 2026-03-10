@@ -5,8 +5,6 @@ import {
   Search,
   Star,
   FileText,
-  MessageSquare,
-  Users,
   ChevronDown,
   ChevronRight,
   Save,
@@ -552,7 +550,9 @@ export function MemoryClient() {
                                   ? "Slash"
                                   : st === "group"
                                     ? "Group"
-                                    : null;
+                                    : st === "topic"
+                                      ? "Topic"
+                                      : null;
                         const typeBadgeClass =
                           st === "main"
                             ? "border-blue-800 text-blue-400"
@@ -562,7 +562,7 @@ export function MemoryClient() {
                                 ? "border-amber-800 text-amber-500"
                                 : st === "slash"
                                   ? "border-green-800 text-green-500"
-                                  : st === "group"
+                                  : st === "group" || st === "topic"
                                     ? "border-teal-800 text-teal-400"
                                     : "border-zinc-700 text-zinc-500";
 
@@ -579,29 +579,14 @@ export function MemoryClient() {
                                   : "text-zinc-600"
                             }`}
                           >
-                            {s.meta?.chatType === "group" ? (
-                              <Users className="h-3.5 w-3.5 flex-shrink-0 text-teal-500" />
-                            ) : (
-                              <MessageSquare
-                                className={`h-3.5 w-3.5 flex-shrink-0 ${isMain ? "" : "opacity-50"}`}
-                              />
-                            )}
                             {agentEmoji && (
                               <span className="text-xs flex-shrink-0" title={sessionAgent?.name}>
                                 {agentEmoji}
                               </span>
                             )}
-                            {s.meta?.subject ? (
-                              <span className="truncate text-xs">
-                                <span className="text-zinc-300">{s.meta.subject as string}</span>
-                                <span className="text-zinc-600"> · </span>
-                                <span className="text-zinc-500">{formatSessionDate(s)}</span>
-                              </span>
-                            ) : (
-                              <span className="truncate text-xs">
-                                {formatSessionDate(s)}
-                              </span>
-                            )}
+                            <span className="truncate text-xs">
+                              {formatSessionDate(s)}
+                            </span>
                             {typeLabel && (
                               <Badge
                                 variant="outline"
