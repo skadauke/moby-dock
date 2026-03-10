@@ -95,10 +95,12 @@ export async function getSession(id: string, agentId?: string): Promise<SessionD
  * Handles multi-agent keys like "agent:dev:main", "agent:dev:subagent:uuid", etc.
  */
 export function getSessionType(
-  meta?: { key?: string; isReset?: boolean; [k: string]: unknown }
+  meta?: { key?: string; isReset?: boolean; [k: string]: unknown },
+  file?: string
 ): "main" | "subagent" | "cron" | "slash" | "group" | "topic" | "unknown" {
   const key = meta?.key || "";
-  // Handle both agent:main:main and agent:dev:main patterns
+
+  // Keyed sessions — derive type from session key
   if (/^agent:[^:]+:main$/.test(key)) return "main";
   if (key.includes(":topic:")) return "topic";
   if (key.includes(":telegram:group:")) return "group";
@@ -106,8 +108,9 @@ export function getSessionType(
   if (key.includes(":cron:")) return "cron";
   if (key.includes(":slash:") || key.includes(":telegram:slash:")) return "slash";
 
-  // If the session has no key but is a .reset file, it's likely a previous main session
-  if (!key && meta?.isReset) return "main";
+  // Sessions without a key — infer type from filename
+  if (!key && file && /-topic-\d+\.jsonl/.test(file)) return "topic";
+  if (!key) return "main"; // Default: old sessions without metadata are main sessions
 
   return "unknown";
 }

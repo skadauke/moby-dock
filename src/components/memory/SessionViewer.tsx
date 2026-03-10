@@ -477,7 +477,7 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
     }
   }, [visibleCount, messages.length]);
 
-  const sessionType = getSessionType(sessionInfo?.meta);
+  const sessionType = getSessionType(sessionInfo?.meta, sessionInfo?.file);
   const typeLabel =
     sessionType === "main"
       ? "Main"
@@ -563,6 +563,15 @@ export function SessionViewer({ sessionId, sessionInfo, highlightText }: Session
           <span className="text-xs text-zinc-500">
             {totalCount} message{totalCount !== 1 ? "s" : ""}
           </span>
+          {sessionInfo?.meta?.key ? (
+            <span className="text-[10px] text-zinc-600 font-mono ml-auto truncate max-w-[250px]" title={sessionInfo.meta.key as string}>
+              {sessionInfo.meta.key as string}
+            </span>
+          ) : (
+            <span className="text-[10px] text-zinc-600 font-mono ml-auto truncate max-w-[250px]">
+              {sessionId}
+            </span>
+          )}
         </div>
 
         {/* Search bar */}
