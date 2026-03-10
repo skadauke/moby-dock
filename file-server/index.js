@@ -819,6 +819,193 @@ app.post('/gateway/restart', authenticate, async (req, res) => {
 const MAX_TERMINAL_SESSIONS = 5;
 const terminalSessions = new Map(); // id -> { pty, ws }
 
+// ─── Logs Endpoint ──────────────────────────────────────────────────
+const fsSync = require('fs');
+
+/**
+ * Normalize a gateway structured log entry to a common format.
+ */
+function normalizeGatewayEntry(raw) {
+  if (!raw || !raw._meta) return null;
+
+  const time = raw.time || raw._meta.date;
+  const level = (raw._meta.logLevelName || 'INFO').toLowerCase();
+  let category = 'general';
+  let message = '';
+  let data = {};
+
+  const field0 = raw['0'];
+  const field1 = raw['1'];
+  const field2 = raw['2'];
+
+  if (typeof field0 === 'string') {
+    // Check if field0 is a JSON subsystem string
+    let subsystem = null;
+    if (field0.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(field0);
+        if (parsed.subsystem) {
+          subsystem = parsed.subsystem;
+        }
+      } catch {}
+    }
+
+    if (subsystem) {
+      category = subsystem;
+      if (typeof field1 === 'string') {
+        message = field1;
+      } else if (typeof field1 === 'object' && field1 !== null) {
+        data = field1;
+        message = typeof field2 === 'string' ? field2 : JSON.stringify(field1);
+      } else {
+        message = String(field1 || '');
+      }
+    } else {
+      // Check for [category] prefix
+      const bracketMatch = field0.match(/^\[([^\]]+)\]\s*(.*)/s);
+      if (bracketMatch) {
+        category = bracketMatch[1];
+        message = bracketMatch[2];
+      } else {
+        message = field0;
+      }
+      // field1 might be data
+      if (typeof field1 === 'object' && field1 !== null) {
+        data = field1;
+      }
+    }
+  }
+
+  return { time, level, source: 'gateway', category, message, data };
+}
+
+/**
+ * Normalize a fileserver log entry (already mostly normalized).
+ */
+function normalizeFileserverEntry(raw) {
+  const { time, level, source, message, category, ...rest } = raw;
+  // Remove fields we've extracted
+  delete rest.time;
+  delete rest.level;
+  delete rest.source;
+  delete rest.message;
+  delete rest.category;
+  return {
+    time: time || '',
+    level: level || 'info',
+    source: source || 'fileserver',
+    category: category || 'general',
+    message: message || '',
+    data: Object.keys(rest).length > 0 ? rest : {},
+  };
+}
+
+/**
+ * Read a file, parse JSON lines, return entries newest-first.
+ */
+function readLogFile(filePath, normalizer) {
+  try {
+    if (!fsSync.existsSync(filePath)) return [];
+    const content = fsSync.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n').filter(l => l.trim());
+    const entries = [];
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const raw = JSON.parse(lines[i]);
+        const entry = normalizer(raw);
+        if (entry) entries.push(entry);
+      } catch {}
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get fileserver log files sorted by date descending.
+ */
+function getFileserverLogFiles() {
+  const logsDir = `${HOME}/.openclaw/logs`;
+  try {
+    const files = fsSync.readdirSync(logsDir)
+      .filter(f => f.startsWith('fileserver-') && f.endsWith('.log'))
+      .sort()
+      .reverse()
+      .map(f => path.join(logsDir, f));
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+// GET /logs — Aggregated log viewer
+app.get('/logs', authenticate, async (req, res) => {
+  const start = Date.now();
+
+  try {
+    // Parse query params
+    const sources = (req.query.source || 'gateway,fileserver').split(',').map(s => s.trim());
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 100, 1), 1000);
+    const levels = req.query.level ? req.query.level.split(',').map(l => l.trim().toLowerCase()) : null;
+    const search = req.query.search ? req.query.search.toLowerCase() : null;
+    const before = req.query.before ? new Date(req.query.before).getTime() : null;
+    const after = req.query.after ? new Date(req.query.after).getTime() : null;
+
+    let allEntries = [];
+
+    // Read gateway logs
+    if (sources.includes('gateway')) {
+      const gatewayLog = `${HOME}/.openclaw/logs/gateway-structured.log`;
+      const gatewayLog1 = `${HOME}/.openclaw/logs/gateway-structured.log.1`;
+      allEntries.push(...readLogFile(gatewayLog, normalizeGatewayEntry));
+      allEntries.push(...readLogFile(gatewayLog1, normalizeGatewayEntry));
+    }
+
+    // Read fileserver logs
+    if (sources.includes('fileserver')) {
+      const fsLogFiles = getFileserverLogFiles();
+      for (const file of fsLogFiles) {
+        allEntries.push(...readLogFile(file, normalizeFileserverEntry));
+      }
+    }
+
+    // Apply filters
+    if (levels) {
+      allEntries = allEntries.filter(e => levels.includes(e.level));
+    }
+    if (search) {
+      allEntries = allEntries.filter(e => e.message.toLowerCase().includes(search));
+    }
+    if (before) {
+      allEntries = allEntries.filter(e => new Date(e.time).getTime() < before);
+    }
+    if (after) {
+      allEntries = allEntries.filter(e => new Date(e.time).getTime() > after);
+    }
+
+    // Sort by time descending
+    allEntries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+    // Apply limit
+    const hasMore = allEntries.length > limit;
+    const entries = allEntries.slice(0, limit);
+
+    logger.info('Logs fetched', {
+      category: 'logs',
+      sources: sources.join(','),
+      totalEntries: allEntries.length,
+      returnedEntries: entries.length,
+      duration: Date.now() - start,
+    });
+
+    res.json({ entries, hasMore });
+  } catch (err) {
+    logger.error('Logs fetch failed', { category: 'logs', error: err.message, duration: Date.now() - start });
+    res.status(500).json({ error: 'Failed to fetch logs', details: err.message });
+  }
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
