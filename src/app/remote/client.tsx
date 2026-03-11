@@ -26,24 +26,39 @@ export function RemoteClient() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [needsCredentials, setNeedsCredentials] = useState(false);
+  const [showLoginForm, setShowLoginForm] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const vncRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleConnect = useCallback(async () => {
+  // Sync fullscreen state when user exits via Esc key
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const handleConnect = useCallback(async (user: string, pass: string) => {
     setConnecting(true);
+    setShowLoginForm(false);
     setError(null);
     setNeedsCredentials(false);
     try {
       const res = await fetch("/api/remote/token");
       if (!res.ok) throw new Error("Failed to get connection token");
       const { token } = await res.json();
+      // Store credentials for when onCredentialsRequired fires
+      setUsername(user);
+      setPassword(pass);
       setWsUrl(`wss://files.skadauke.dev/vnc?token=${token}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection failed");
       setConnecting(false);
+      setShowLoginForm(true);
     }
   }, []);
 
@@ -52,20 +67,31 @@ export function RemoteClient() {
     setConnecting(false);
     setWsUrl(null);
     setNeedsCredentials(false);
+    setShowLoginForm(true);
     setPassword("");
     setUsername("");
   }, []);
 
-  const handleCredentialsSubmit = useCallback((e: React.FormEvent) => {
+  const handleLoginSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (vncRef.current && password) {
-      // macOS uses ARD auth which needs username + password
+    const form = e.target as HTMLFormElement;
+    const formData = new FormData(form);
+    const user = formData.get("username") as string;
+    const pass = formData.get("password") as string;
+    if (user && pass) {
+      handleConnect(user, pass);
+    }
+  }, [handleConnect]);
+
+  // Send credentials when VNC server asks for them
+  useEffect(() => {
+    if (needsCredentials && vncRef.current && username && password) {
       vncRef.current.sendCredentials({ username, password });
       setNeedsCredentials(false);
+      // Clear password from state after sending
       setPassword("");
-      setUsername("");
     }
-  }, [username, password]);
+  }, [needsCredentials, username, password]);
 
   // Patch noVNC dot cursor to be larger (default is 3x3, invisible on Retina)
   useEffect(() => {
@@ -85,10 +111,8 @@ export function RemoteClient() {
             const dist = Math.sqrt(dx * dx + dy * dy);
             const i = (y * size + x) * 4;
             if (dist <= r - 1) {
-              // Black fill
               pixels[i] = 0; pixels[i+1] = 0; pixels[i+2] = 0; pixels[i+3] = 200;
             } else if (dist <= r) {
-              // White border
               pixels[i] = 255; pixels[i+1] = 255; pixels[i+2] = 255; pixels[i+3] = 255;
             }
           }
@@ -104,10 +128,8 @@ export function RemoteClient() {
     if (!containerRef.current) return;
     if (document.fullscreenElement) {
       document.exitFullscreen();
-      setIsFullscreen(false);
     } else {
       containerRef.current.requestFullscreen();
-      setIsFullscreen(true);
     }
   }, []);
 
@@ -125,30 +147,28 @@ export function RemoteClient() {
               Connected
             </span>
           )}
-          {connecting && !connected && !needsCredentials && (
+          {connecting && !connected && (
             <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
               Connecting...
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {(connected || connecting) && (
+          {connected && (
             <>
-              {connected && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleFullscreen}
-                  className="text-zinc-400"
-                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-                >
-                  {isFullscreen ? (
-                    <Minimize className="h-4 w-4" />
-                  ) : (
-                    <Maximize className="h-4 w-4" />
-                  )}
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleFullscreen}
+                className="text-zinc-400"
+                title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              >
+                {isFullscreen ? (
+                  <Minimize className="h-4 w-4" />
+                ) : (
+                  <Maximize className="h-4 w-4" />
+                )}
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -159,16 +179,6 @@ export function RemoteClient() {
                 Disconnect
               </Button>
             </>
-          )}
-          {!connected && !connecting && (
-            <Button
-              onClick={handleConnect}
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Monitor className="h-4 w-4 mr-1" />
-              Connect
-            </Button>
           )}
         </div>
       </header>
@@ -194,6 +204,7 @@ export function RemoteClient() {
               setConnected(false);
               setConnecting(false);
               setWsUrl(null);
+              setShowLoginForm(true);
             }}
             onCredentialsRequired={() => {
               setNeedsCredentials(true);
@@ -204,25 +215,31 @@ export function RemoteClient() {
               );
               setConnecting(false);
               setWsUrl(null);
+              setShowLoginForm(true);
             }}
           />
         )}
 
-        {/* Credentials prompt overlay */}
-        {needsCredentials && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
-            <form onSubmit={handleCredentialsSubmit} className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80 space-y-4">
+        {/* Login form — shown on initial load and after disconnect */}
+        {showLoginForm && !connecting && !connected && (
+          <div className="text-center">
+            {error && (
+              <div className="mb-6">
+                <MonitorOff className="h-10 w-10 text-red-400 mx-auto mb-2" />
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
+            )}
+            <form onSubmit={handleLoginSubmit} className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80 space-y-4 text-left">
               <div className="flex items-center gap-2 text-zinc-100">
                 <Lock className="h-5 w-5" />
-                <h2 className="font-semibold">Screen Sharing Login</h2>
+                <h2 className="font-semibold">Screen Sharing</h2>
               </div>
               <p className="text-zinc-400 text-sm">
-                Enter your macOS username and password.
+                Enter your macOS credentials to connect.
               </p>
               <input
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                name="username"
                 placeholder="Username"
                 autoFocus
                 autoComplete="username"
@@ -230,50 +247,19 @@ export function RemoteClient() {
               />
               <input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                name="password"
                 placeholder="Password"
                 autoComplete="current-password"
                 className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <Button
                 type="submit"
-                disabled={!username || !password}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
+                <Monitor className="h-4 w-4 mr-2" />
                 Connect
               </Button>
             </form>
-          </div>
-        )}
-
-        {/* Disconnected state */}
-        {!wsUrl && !connecting && (
-          <div className="text-center">
-            {error ? (
-              <div className="space-y-4">
-                <MonitorOff className="h-12 w-12 text-red-400 mx-auto" />
-                <p className="text-red-400">{error}</p>
-                <Button
-                  onClick={handleConnect}
-                  variant="outline"
-                  className="border-zinc-700"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <Monitor className="h-12 w-12 text-zinc-600 mx-auto" />
-                <p className="text-zinc-400">
-                  Click Connect to view the Mac mini desktop
-                </p>
-                <p className="text-zinc-600 text-sm">
-                  Requires Screen Sharing to be enabled on the host
-                </p>
-              </div>
-            )}
           </div>
         )}
       </div>
