@@ -63,29 +63,42 @@ export async function GET(req: NextRequest) {
   const startTime = after || new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const endTime = before || new Date().toISOString();
 
-  // Build APL query
-  let apl = `['${AXIOM_DATASET}']`;
+  // Build query using legacy query API (APL has issues with nested "data.*" fields)
+  interface AxiomFilter {
+    field: string;
+    op: string;
+    value: string | string[];
+  }
+  const filters: AxiomFilter[] = [];
   if (levels && levels.length > 0) {
-    const levelFilter = levels.map((l) => `data.level == "${l}"`).join(" or ");
-    apl += ` | where ${levelFilter}`;
+    filters.push({ field: "data.level", op: "==", value: levels.length === 1 ? levels[0] : levels });
   }
   if (search) {
-    const escaped = search.replace(/"/g, '\\"');
-    apl += ` | where data.message contains "${escaped}"`;
+    filters.push({ field: "data.message", op: "contains", value: search });
   }
-  apl += ` | sort by _time desc | take ${limit + 1}`;
+
+  const queryBody: Record<string, unknown> = {
+    startTime,
+    endTime,
+    limit: limit + 1,
+  };
+  if (filters.length > 0) {
+    queryBody.filter = filters.length === 1
+      ? { field: filters[0].field, op: filters[0].op, value: filters[0].value }
+      : { op: "and", children: filters.map(f => ({ field: f.field, op: f.op, value: f.value })) };
+  }
 
   const start = Date.now();
   try {
     const response = await fetch(
-      "https://api.axiom.co/v1/datasets/_apl?format=legacy",
+      `https://api.axiom.co/v1/datasets/${AXIOM_DATASET}/query`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${AXIOM_TOKEN}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ apl, startTime, endTime }),
+        body: JSON.stringify(queryBody),
         cache: "no-store",
       }
     );
