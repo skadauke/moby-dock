@@ -29,6 +29,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Path is required" }, { status: 400 });
   }
 
+  // Block path traversal attempts (e.g., ../../credentials/secrets.json)
+  if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(filePath)) {
+    log.warn("Path traversal attempt blocked", { path: filePath });
+    await log.flush();
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+
   log.info("GET /api/files/raw", { path: filePath });
 
   // Only allow media paths
