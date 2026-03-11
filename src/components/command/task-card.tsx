@@ -131,16 +131,16 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800">
-              <DropdownMenuItem onClick={() => onEdit?.(task)}>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(task); }}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onToggleFlag?.(task.id)}>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onToggleFlag?.(task.id); }}>
                 <Flag className="mr-2 h-4 w-4" />
                 {task.needsReview ? "Clear Flag" : "Flag for Review"}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={handleDelete}
+                onClick={(e) => { e.stopPropagation(); handleDelete(); }}
                 className="text-red-500 focus:text-red-500"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
@@ -180,7 +180,7 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
             Are you sure you want to delete &ldquo;{task.title}&rdquo;? This cannot be undone.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-3">
           <Button
             variant="outline"
             onClick={() => setShowDeleteConfirm(false)}
