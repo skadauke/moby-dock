@@ -22,12 +22,10 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN;
 // Allowed base paths - files outside these are blocked
 const HOME = process.env.HOME || '/Users/skadauke';
 const ALLOWED_PATHS = [
-  `${HOME}/clawd`,           // Workspace
-  `${HOME}/.openclaw`,       // OpenClaw config
-  `${HOME}/.clawdbot`,       // Legacy clawdbot config (if needed)
+  `${HOME}/clawd`,           // Moby workspace
+  `${HOME}/clawd-dev`,       // Cody workspace
+  `${HOME}/.openclaw`,       // OpenClaw config + media
   `${HOME}/openclaw/skills`, // Built-in skills (read-only)
-  `${HOME}/.openclaw/media`, // Media files (read-only)
-  `${HOME}/.clawdbot/media`, // Legacy media files (read-only)
 ];
 
 // Read-only paths — writes/deletes blocked
@@ -1009,26 +1007,73 @@ app.get('/logs', authenticate, async (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
+// ─── VNC WebSocket Proxy ──────────────────────────────────────────────
+const vncWss = new WebSocketServer({ noServer: true });
+const net = require('net');
+const VNC_HOST = '127.0.0.1';
+const VNC_PORT = 5900;
+
+vncWss.on('connection', (ws) => {
+  logger.info('VNC WebSocket connection opened', { category: 'vnc' });
+
+  const vnc = net.createConnection({ host: VNC_HOST, port: VNC_PORT }, () => {
+    logger.info('Connected to VNC server', { category: 'vnc' });
+  });
+
+  vnc.on('data', (data) => {
+    if (ws.readyState === 1) { // WebSocket.OPEN
+      ws.send(data);
+    }
+  });
+
+  ws.on('message', (data) => {
+    vnc.write(Buffer.from(data));
+  });
+
+  vnc.on('error', (err) => {
+    logger.error('VNC connection error', { category: 'vnc', error: err.message });
+    ws.close(4500, 'VNC connection failed');
+  });
+
+  vnc.on('close', () => {
+    logger.info('VNC TCP connection closed', { category: 'vnc' });
+    ws.close();
+  });
+
+  ws.on('close', () => {
+    logger.info('VNC WebSocket closed', { category: 'vnc' });
+    vnc.destroy();
+  });
+
+  ws.on('error', (err) => {
+    logger.error('VNC WebSocket error', { category: 'vnc', error: err.message });
+    vnc.destroy();
+  });
+});
+
 server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
 
-  if (url.pathname !== '/terminal') {
-    socket.destroy();
-    return;
-  }
-
-  // Auth check
+  // Auth check (shared for all WebSocket endpoints)
   const token = url.searchParams.get('token');
   if (token !== AUTH_TOKEN) {
-    logger.warn('Terminal auth failed', { category: 'auth', reason: 'invalid_token' });
+    logger.warn('WebSocket auth failed', { category: 'auth', reason: 'invalid_token', path: url.pathname });
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
   }
 
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
+  if (url.pathname === '/vnc') {
+    vncWss.handleUpgrade(request, socket, head, (ws) => {
+      vncWss.emit('connection', ws, request);
+    });
+  } else if (url.pathname === '/terminal') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
 wss.on('connection', (ws, request) => {
