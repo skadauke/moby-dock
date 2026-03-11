@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import {
   Monitor,
@@ -66,6 +66,39 @@ export function RemoteClient() {
       setUsername("");
     }
   }, [username, password]);
+
+  // Patch noVNC dot cursor to be larger (default is 3x3, invisible on Retina)
+  useEffect(() => {
+    if (!connected) return;
+    try {
+      const rfb = vncRef.current?.rfb;
+      if (!rfb) return;
+      const RFB = rfb.constructor;
+      if (RFB?.cursors?.dot) {
+        // 9x9 circle cursor: white outline, black fill
+        const size = 9;
+        const pixels = new Uint8Array(size * size * 4);
+        const cx = 4, cy = 4, r = 4;
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const dx = x - cx, dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const i = (y * size + x) * 4;
+            if (dist <= r - 1) {
+              // Black fill
+              pixels[i] = 0; pixels[i+1] = 0; pixels[i+2] = 0; pixels[i+3] = 200;
+            } else if (dist <= r) {
+              // White border
+              pixels[i] = 255; pixels[i+1] = 255; pixels[i+2] = 255; pixels[i+3] = 255;
+            }
+          }
+        }
+        RFB.cursors.dot = { rgbaPixels: pixels, w: size, h: size, hotx: cx, hoty: cy };
+      }
+    } catch {
+      // Non-critical — fall back to default cursor
+    }
+  }, [connected]);
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return;
