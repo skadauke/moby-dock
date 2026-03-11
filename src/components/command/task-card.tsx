@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Task, PRIORITIES, CREATORS } from "@/types/kanban";
@@ -7,6 +8,14 @@ import { useKanbanDnd } from "./kanban-dnd-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +33,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const {
     attributes,
     listeners,
@@ -45,9 +55,12 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
   const creator = CREATORS.find((c) => c.value === task.creator);
 
   const handleDelete = () => {
-    if (confirm("Delete this task?")) {
-      onDelete?.(task.id);
-    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    onDelete?.(task.id);
+    setShowDeleteConfirm(false);
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -157,6 +170,34 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
         )}
       </CardContent>
     </Card>
+
+    {/* Delete confirmation dialog */}
+    <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <DialogContent className="bg-zinc-950 border-zinc-800 text-zinc-100 max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete task</DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            Are you sure you want to delete &ldquo;{task.title}&rdquo;? This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteConfirm(false)}
+            className="border-zinc-700"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={confirmDelete}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </div>
   );
 }
