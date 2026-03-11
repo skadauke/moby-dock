@@ -19,8 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Task, Project, Priority, Creator, Status, PRIORITIES, CREATORS } from "@/types/kanban";
-import { AgentInfo } from "@/app/api/agents/route";
+import { Task, Project, Priority, Creator, Status, PRIORITIES, AGENT_DISPLAY } from "@/types/kanban";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDateTime } from "@/lib/date-utils";
 
@@ -52,7 +51,6 @@ export function TaskModal({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [assignedAgent, setAssignedAgent] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -66,10 +64,6 @@ export function TaskModal({
         .then(res => res.ok ? res.json() : [])
         .then(data => setProjects(data))
         .catch(() => setProjects([]));
-      fetch("/api/agents")
-        .then(res => res.ok ? res.json() : { agents: [] })
-        .then(data => setAgents(data.agents || []))
-        .catch(() => setAgents([]));
     }
   }, [open]);
 
@@ -233,51 +227,27 @@ export function TaskModal({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select 
-                value={priority} 
-                onValueChange={(v) => setPriority(v as Priority)}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger className="bg-zinc-900 border-zinc-800">
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
-                  {PRIORITIES.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      <span className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${p.color}`} />
-                        {p.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Creator</Label>
-              <Select 
-                value={creator} 
-                onValueChange={(v) => setCreator(v as Creator)}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger className="bg-zinc-900 border-zinc-800">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
-                  {CREATORS.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>
-                      <span className="flex items-center gap-2">
-                        {c.emoji} {c.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label>Priority</Label>
+            <Select 
+              value={priority} 
+              onValueChange={(v) => setPriority(v as Priority)}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger className="bg-zinc-900 border-zinc-800">
+                <SelectValue placeholder="Select priority" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-zinc-800">
+                {PRIORITIES.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${p.color}`} />
+                      {p.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Project selector */}
@@ -310,40 +280,37 @@ export function TaskModal({
             </Select>
           </div>
 
-          {/* Agent selector */}
-          {agents.length > 0 && (
-            <div className="space-y-2">
-              <Label>Assigned Agent</Label>
-              <Select 
-                value={assignedAgent || "none"} 
-                onValueChange={(v) => setAssignedAgent(v === "none" ? null : v)}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger className="bg-zinc-900 border-zinc-800">
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
-                  <SelectItem value="none">
-                    <span className="text-zinc-400">Unassigned</span>
+          {/* Assignee selector */}
+          <div className="space-y-2">
+            <Label>Assigned To</Label>
+            <Select 
+              value={assignedAgent || "none"} 
+              onValueChange={(v) => setAssignedAgent(v === "none" ? null : v)}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger className="bg-zinc-900 border-zinc-800">
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-zinc-800">
+                <SelectItem value="none">
+                  <span className="text-zinc-400">Unassigned</span>
+                </SelectItem>
+                {Object.entries(AGENT_DISPLAY).map(([id, info]) => (
+                  <SelectItem key={id} value={id}>
+                    <span className="flex items-center gap-2">
+                      <span>{info.emoji}</span>
+                      {info.name}
+                    </span>
                   </SelectItem>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      <span className="flex items-center gap-2">
-                        {agent.emoji && <span>{agent.emoji}</span>}
-                        {agent.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Timestamps - only show for existing tasks */}
           {isEditing && task && (
-            <div className="text-xs text-zinc-500 flex gap-4 pt-2 border-t border-zinc-800">
-              <span>Created: {formatDateTime(task.createdAt)}</span>
-              <span>Updated: {formatDateTime(task.updatedAt)}</span>
+            <div className="text-xs text-zinc-500 pt-2 border-t border-zinc-800">
+              <span>Created by {task.creator === "MOBY" ? "🐋 Moby" : "👤 Stephan"} · {formatDateTime(task.createdAt)} · Updated: {formatDateTime(task.updatedAt)}</span>
             </div>
           )}
 

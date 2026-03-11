@@ -54,6 +54,12 @@ export const CREATORS: { value: Creator; label: string; emoji: string }[] = [
   { value: "STEPHAN", label: "Stephan", emoji: "👤" },
 ];
 
+export const AGENT_DISPLAY: Record<string, { emoji: string; name: string }> = {
+  main: { emoji: "🐋", name: "Moby" },
+  dev: { emoji: "🐙", name: "Cody" },
+  stephan: { emoji: "👤", name: "Stephan" },
+};
+
 // Map database status strings to Status type
 export const STATUS_MAP: Record<string, Status> = {
   "BACKLOG": "BACKLOG",
