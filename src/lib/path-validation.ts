@@ -15,8 +15,8 @@ const HOME = process.env.HOME_DIR || homedir();
 /** Allowed base directories for file operations */
 const ALLOWED_BASE_DIRS = [
   '~/clawd',
+  '~/clawd-dev',
   '~/.openclaw',
-  '~/.clawdbot',  // Legacy
   '~/openclaw',   // Built-in skills (read-only)
 ];
 
