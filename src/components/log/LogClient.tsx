@@ -108,6 +108,7 @@ export function LogClient() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
 
   // Filters
   const [source, setSource] = useState("");
@@ -147,6 +148,7 @@ export function LogClient() {
 
       params.set("limit", "100");
 
+      const fetchErrors: string[] = [];
       try {
         // Determine which endpoints to fetch from
         const fetchLocal = !source || source === "gateway" || source === "fileserver";
@@ -157,8 +159,15 @@ export function LogClient() {
         if (fetchLocal) {
           promises.push(
             fetch(`/api/logs?${params.toString()}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null)
+              .then(async (r) => {
+                if (!r.ok) {
+                  const body = await r.text().catch(() => "");
+                  fetchErrors.push(`Local logs: ${r.status} ${body.slice(0, 100)}`);
+                  return null;
+                }
+                return r.json();
+              })
+              .catch((e) => { fetchErrors.push(`Local logs: ${String(e)}`); return null; })
           );
         }
 
@@ -180,8 +189,15 @@ export function LogClient() {
 
           promises.push(
             fetch(`/api/logs/axiom?${axiomParams.toString()}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null)
+              .then(async (r) => {
+                if (!r.ok) {
+                  const body = await r.text().catch(() => "");
+                  fetchErrors.push(`Axiom: ${r.status} ${body.slice(0, 100)}`);
+                  return null;
+                }
+                return r.json();
+              })
+              .catch((e) => { fetchErrors.push(`Axiom: ${String(e)}`); return null; })
           );
         }
 
@@ -208,6 +224,11 @@ export function LogClient() {
 
         const data: LogResponse = { entries: merged, hasMore: anyHasMore };
 
+        // Surface any fetch errors
+        if (!opts?.prepend) {
+          setErrors(fetchErrors);
+        }
+
         if (opts?.append) {
           setEntries((prev) => [...prev, ...data.entries]);
           setHasMore(data.hasMore);
@@ -218,8 +239,8 @@ export function LogClient() {
           setHasMore(data.hasMore);
           setExpanded(new Set());
         }
-      } catch {
-        // silently fail on network errors
+      } catch (e) {
+        setErrors([`Unexpected error: ${String(e)}`]);
       }
     },
     [source, activeLevels, searchQuery, timeRangeIndex]
@@ -412,6 +433,15 @@ export function LogClient() {
           </Button>
         </div>
       </div>
+
+      {/* ── Error banner ──────────────────────────────────────── */}
+      {errors.length > 0 && (
+        <div className="mx-4 mt-2 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono">
+          {errors.map((err, i) => (
+            <div key={i}>⚠ {err}</div>
+          ))}
+        </div>
+      )}
 
       {/* ── Log entries ────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
