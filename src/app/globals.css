@@ -157,3 +157,19 @@
 .dark *::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Log entry fade-in animation */
+@keyframes fade-in-highlight {
+  0% {
+    background-color: rgba(63, 63, 70, 0.5);
+    opacity: 0.6;
+  }
+  100% {
+    background-color: transparent;
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in-highlight 1.2s ease-out;
+}

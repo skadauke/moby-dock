@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Search, RefreshCw, ScrollText, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Search, RefreshCw, ScrollText, ChevronDown, ChevronRight, Loader2, Play, Pause, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -79,15 +79,16 @@ function formatTimestamp(iso: string): string {
 }
 
 function formatMessage(message: string): React.ReactNode {
-  // Highlight key=value pairs in log messages
-  const parts = message.split(/(\b\w+=[^\s]+)/g);
+  // Highlight key=value pairs — only when preceded by start-of-string or whitespace
+  // This avoids matching inside URLs like /logs?level=error
+  const parts = message.split(/((?:^|\s)\w+=\S+)/g);
   return parts.map((part, i) => {
-    if (/^\w+=[^\s]+$/.test(part)) {
-      const eqIdx = part.indexOf("=");
-      const key = part.slice(0, eqIdx);
-      const val = part.slice(eqIdx + 1);
+    const match = part.match(/^(\s?)(\w+)=(\S+)$/);
+    if (match) {
+      const [, ws, key, val] = match;
       return (
         <span key={i}>
+          {ws}
           <span className="text-zinc-500">{key}=</span>
           <span className="text-zinc-200 font-medium">{val}</span>
         </span>
@@ -99,6 +100,28 @@ function formatMessage(message: string): React.ReactNode {
 
 function hasData(data?: Record<string, unknown>): boolean {
   return !!data && Object.keys(data).length > 0;
+}
+
+// ── Copy JSON button ────────────────────────────────────────────────
+
+function CopyJsonButton({ json }: { json: Record<string, unknown> }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(JSON.stringify(json, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="absolute top-2 right-2 p-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700 opacity-0 group-hover/json:opacity-100 transition-opacity"
+      title="Copy JSON"
+    >
+      {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -120,6 +143,8 @@ export function LogClient() {
 
   // Expanded entries (by index) — only for data JSON
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // Track newly added entries for animation
+  const [newEntryKeys, setNewEntryKeys] = useState<Set<string>>(new Set());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(null);
@@ -233,7 +258,16 @@ export function LogClient() {
           setEntries((prev) => [...prev, ...data.entries]);
           setHasMore(data.hasMore);
         } else if (opts?.prepend && data.entries.length > 0) {
-          setEntries((prev) => [...data.entries, ...prev]);
+          // Track new entry IDs for animation
+          const newKeys = new Set(data.entries.map((e, j) => `${e.time}-new-${j}`));
+          setNewEntryKeys(newKeys);
+          setTimeout(() => setNewEntryKeys(new Set()), 1500);
+          // Merge and re-sort to maintain timestamp order
+          setEntries((prev) => {
+            const combined = [...data.entries, ...prev];
+            combined.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+            return combined;
+          });
         } else if (!opts?.append && !opts?.prepend) {
           setEntries(data.entries);
           setHasMore(data.hasMore);
@@ -384,7 +418,7 @@ export function LogClient() {
         <select
           value={timeRangeIndex}
           onChange={(e) => setTimeRangeIndex(Number(e.target.value))}
-          className="h-7 px-2 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+          className="h-7 px-2 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 appearance-none cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-zinc-300"
         >
           {TIME_RANGES.map((r, i) => (
             <option key={r.label} value={i}>
@@ -420,16 +454,16 @@ export function LogClient() {
           </Button>
           <Button
             variant={autoRefresh ? "secondary" : "ghost"}
-            size="xs"
+            size="icon-xs"
             onClick={() => setAutoRefresh((v) => !v)}
             className={
               autoRefresh
                 ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                 : "text-zinc-500 hover:text-zinc-300"
             }
-            title={autoRefresh ? "Live tail ON — refreshing every 5s" : "Click to enable live tail (auto-refresh every 5s)"}
+            title={autoRefresh ? "Pause streaming live logs" : "Resume streaming live logs"}
           >
-            {autoRefresh ? "⏵ Live" : "Live"}
+            {autoRefresh ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
           </Button>
         </div>
       </div>
@@ -462,9 +496,11 @@ export function LogClient() {
               const borderClass = LEVEL_BORDER[entry.level] || LEVEL_BORDER.debug;
               const sourceColor = SOURCE_STYLES[entry.source] || "text-zinc-400";
               const showData = hasData(entry.data);
+              const entryKey = `${entry.time}-${i}`;
+              const isNew = newEntryKeys.size > 0 && Array.from(newEntryKeys).some(k => k.startsWith(entry.time));
 
               return (
-                <div key={`${entry.time}-${i}`} className={borderClass}>
+                <div key={entryKey} className={`${borderClass} ${isNew ? "animate-fade-in bg-zinc-800/30" : ""}`}>
                   <div
                     role={showData ? "button" : undefined}
                     tabIndex={showData ? 0 : undefined}
@@ -522,9 +558,12 @@ export function LogClient() {
                   {/* Expanded data JSON */}
                   {isExpanded && showData && (
                     <div className="pl-12 pr-4 pb-2">
-                      <pre className="p-2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 overflow-x-auto text-[11px] leading-relaxed">
-                        {JSON.stringify(entry.data, null, 2)}
-                      </pre>
+                      <div className="relative group/json">
+                        <CopyJsonButton json={entry.data!} />
+                        <pre className="p-2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 overflow-x-auto text-[11px] leading-relaxed">
+                          {JSON.stringify(entry.data, null, 2)}
+                        </pre>
+                      </div>
                     </div>
                   )}
                 </div>
