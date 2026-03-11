@@ -15,8 +15,11 @@ interface BoardProps {
   // For cross-column moves, also pass sourceColumnIds to persist both columns
   onTaskStatusChange?: (taskId: string, newStatus: Status, newPosition: number, reorderedTaskIds: string[], sourceStatus: Status | null, sourceColumnIds: string[]) => void;
   onTaskReorder?: (taskId: string, status: Status, newPosition: number, reorderedTaskIds: string[]) => void;
+  onTaskProjectChange?: (taskId: string, projectId: string | null) => void;
   // Disable DnD when filters are active (filtered list would corrupt ordering)
   disableDragDrop?: boolean;
+  // Children rendered inside the DnD context (e.g., ProjectSidebar for drag-to-project)
+  children?: React.ReactNode;
 }
 
 export function Board({
@@ -27,7 +30,9 @@ export function Board({
   onAddTask,
   onTaskStatusChange,
   onTaskReorder,
+  onTaskProjectChange,
   disableDragDrop = false,
+  children,
 }: BoardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
 
@@ -175,21 +180,25 @@ export function Board({
       tasks={tasks}
       onTaskStatusChange={handleTaskStatusChange}
       onTaskReorder={handleTaskReorder}
+      onTaskProjectChange={onTaskProjectChange}
       disabled={disableDragDrop}
     >
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 h-full min-h-0">
-        {COLUMNS.map((column) => (
-          <Column
-            key={column.id}
-            id={column.id}
-            title={column.title}
-            tasks={getTasksByStatus(column.id)}
-            onEditTask={onEditTask}
-            onDeleteTask={handleDeleteTask}
-            onToggleFlag={handleToggleFlag}
-            onAddTask={onAddTask}
-          />
-        ))}
+      {children}
+      <div className="flex-1 overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 h-full min-h-0">
+          {COLUMNS.map((column) => (
+            <Column
+              key={column.id}
+              id={column.id}
+              title={column.title}
+              tasks={getTasksByStatus(column.id)}
+              onEditTask={onEditTask}
+              onDeleteTask={handleDeleteTask}
+              onToggleFlag={handleToggleFlag}
+              onAddTask={onAddTask}
+            />
+          ))}
+        </div>
       </div>
     </KanbanDndProvider>
   );

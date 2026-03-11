@@ -216,6 +216,26 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
     }
   }, [persistTaskOrder]);
 
+  // Handle task project change (drag to project in sidebar)
+  const handleTaskProjectChange = useCallback(async (taskId: string, projectId: string | null) => {
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, projectId } : t));
+    // Persist
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!res.ok) throw new Error('Failed to update project');
+    } catch (error) {
+      console.error('Failed to update task project:', error);
+      // Revert on error
+      const res = await fetch('/api/tasks');
+      if (res.ok) setTasks(await res.json());
+    }
+  }, []);
+
   // Handle task reorder within same column
   // Board passes the status and reordered task IDs directly to avoid stale state issues
   const handleTaskReorder = useCallback(async (
@@ -258,23 +278,22 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
       />
       
       <div className="flex-1 flex overflow-hidden">
-        <ProjectSidebar
-          selectedProjectId={selectedProjectId}
-          onSelectProject={setSelectedProjectId}
-        />
-        
-        <div className="flex-1 overflow-hidden">
-          <Board
-            initialTasks={filteredTasks}
-            onDeleteTask={handleDeleteTask}
-            onToggleFlag={handleToggleFlag}
-            onEditTask={handleEditTask}
-            onAddTask={handleAddTask}
-            onTaskStatusChange={handleTaskStatusChange}
-            onTaskReorder={handleTaskReorder}
-            disableDragDrop={filter !== "all" || selectedProjectId !== null}
+        <Board
+          initialTasks={filteredTasks}
+          onDeleteTask={handleDeleteTask}
+          onToggleFlag={handleToggleFlag}
+          onEditTask={handleEditTask}
+          onAddTask={handleAddTask}
+          onTaskStatusChange={handleTaskStatusChange}
+          onTaskReorder={handleTaskReorder}
+          onTaskProjectChange={handleTaskProjectChange}
+          disableDragDrop={filter !== "all"}
+        >
+          <ProjectSidebar
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
           />
-        </div>
+        </Board>
       </div>
 
       <TaskModal
@@ -284,6 +303,7 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
         onTaskUpdated={handleTaskUpdated}
         onTaskCreated={handleTaskCreated}
         defaultStatus={newTaskStatus}
+        defaultProjectId={selectedProjectId}
       />
     </div>
   );
