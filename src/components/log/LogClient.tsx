@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Search, RefreshCw, ScrollText, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,17 +24,17 @@ interface LogResponse {
 // ── Constants ───────────────────────────────────────────────────────
 
 const LEVEL_BORDER: Record<string, string> = {
-  error: "border-l-2 border-red-500",
-  warn: "border-l-2 border-amber-500",
-  info: "border-l-2 border-blue-500",
-  debug: "border-l-2 border-zinc-600",
+  error: "border-l-[3px] border-red-500",
+  warn: "border-l-[3px] border-amber-500",
+  info: "border-l-[3px] border-blue-500",
+  debug: "border-l-[3px] border-zinc-600",
 };
 
-const LEVEL_FILTER_STYLES: Record<string, { active: string }> = {
-  error: { active: "bg-red-500/20 text-red-400" },
-  warn: { active: "bg-amber-500/20 text-amber-400" },
-  info: { active: "bg-blue-500/20 text-blue-400" },
-  debug: { active: "bg-zinc-500/20 text-zinc-500" },
+const LEVEL_FILTER_STYLES: Record<string, { active: string; inactive: string }> = {
+  error: { active: "bg-red-500/20 text-red-400 ring-1 ring-red-500/40", inactive: "bg-zinc-800/50 text-zinc-600" },
+  warn: { active: "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40", inactive: "bg-zinc-800/50 text-zinc-600" },
+  info: { active: "bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40", inactive: "bg-zinc-800/50 text-zinc-600" },
+  debug: { active: "bg-zinc-700/50 text-zinc-300 ring-1 ring-zinc-500/40", inactive: "bg-zinc-800/50 text-zinc-600" },
 };
 
 const SOURCE_STYLES: Record<string, string> = {
@@ -76,6 +76,25 @@ function formatTimestamp(iso: string): string {
   const ss = String(d.getSeconds()).padStart(2, "0");
   const ms = String(d.getMilliseconds()).padStart(3, "0");
   return `${mon} ${dd} ${hh}:${mm}:${ss}.${ms}`;
+}
+
+function formatMessage(message: string): React.ReactNode {
+  // Highlight key=value pairs in log messages
+  const parts = message.split(/(\b\w+=[^\s]+)/g);
+  return parts.map((part, i) => {
+    if (/^\w+=[^\s]+$/.test(part)) {
+      const eqIdx = part.indexOf("=");
+      const key = part.slice(0, eqIdx);
+      const val = part.slice(eqIdx + 1);
+      return (
+        <span key={i}>
+          <span className="text-zinc-500">{key}=</span>
+          <span className="text-zinc-200 font-medium">{val}</span>
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
 
 function hasData(data?: Record<string, unknown>): boolean {
@@ -321,19 +340,18 @@ export function LogClient() {
             const active = activeLevels.has(lvl);
             const style = LEVEL_FILTER_STYLES[lvl];
             return (
-              <Button
+              <button
                 key={lvl}
-                variant="ghost"
-                size="xs"
+                type="button"
                 onClick={() => toggleLevel(lvl)}
-                className={
+                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                   active
-                    ? `${style.active} hover:opacity-80`
-                    : "text-zinc-500 hover:text-zinc-300"
-                }
+                    ? style.active
+                    : style.inactive
+                }`}
               >
                 {lvl.charAt(0).toUpperCase() + lvl.slice(1)}
-              </Button>
+              </button>
             );
           })}
         </div>
@@ -388,9 +406,9 @@ export function LogClient() {
                 ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                 : "text-zinc-500 hover:text-zinc-300"
             }
-            title={autoRefresh ? "Auto-refresh ON (5s)" : "Auto-refresh OFF"}
+            title={autoRefresh ? "Live tail ON — refreshing every 5s" : "Click to enable live tail (auto-refresh every 5s)"}
           >
-            Auto
+            {autoRefresh ? "⏵ Live" : "Live"}
           </Button>
         </div>
       </div>
@@ -465,9 +483,9 @@ export function LogClient() {
                       </span>
                     )}
 
-                    {/* Message — always full, no truncation */}
+                    {/* Message — always full, no truncation, key=value highlighted */}
                     <span className="text-zinc-300 whitespace-pre-wrap break-words min-w-0">
-                      {entry.message}
+                      {formatMessage(entry.message)}
                     </span>
                   </div>
 
