@@ -22,6 +22,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { FileText, GripVertical, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Helper function to get agent emoji from file path
+function getAgentEmoji(filePath: string): string | null {
+  // Check clawd-dev BEFORE clawd since /clawd/ would also match /clawd-dev/
+  if (filePath.includes('/clawd-dev/') || filePath.startsWith('~/clawd-dev/')) return '🐙';
+  if (filePath.includes('/clawd/') || filePath.startsWith('~/clawd/')) return '🐋';
+  return null;
+}
+
 export interface QuickAccessItem {
   id: string;
   filePath: string;
@@ -88,7 +96,12 @@ function SortableItem({ item, isSelected, onSelect, onRemove }: SortableItemProp
       >
         <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{item.fileName}</div>
+          <div className="truncate font-medium">
+                {item.fileName}
+                {getAgentEmoji(item.filePath) && (
+                  <span className="ml-1.5 text-xs opacity-70">{getAgentEmoji(item.filePath)}</span>
+                )}
+              </div>
           {item.description && (
             <div className="truncate text-xs text-zinc-500">{item.description}</div>
           )}
@@ -116,7 +129,12 @@ function DragOverlayItem({ item }: { item: QuickAccessItem }) {
     <div className="flex items-center gap-1 px-1 py-1.5 text-sm bg-zinc-800 text-zinc-300 rounded shadow-lg">
       <GripVertical className="h-3.5 w-3.5 text-zinc-600" />
       <FileText className="h-4 w-4 text-zinc-500" />
-      <span className="font-medium">{item.fileName}</span>
+      <span className="font-medium">
+        {item.fileName}
+        {getAgentEmoji(item.filePath) && (
+          <span className="ml-1.5 text-xs opacity-70">{getAgentEmoji(item.filePath)}</span>
+        )}
+      </span>
     </div>
   );
 }
