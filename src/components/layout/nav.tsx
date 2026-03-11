@@ -11,6 +11,7 @@ import {
   ScrollText,
   Brain,
   Sparkles,
+  Monitor,
   LogOut,
   Github,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/vault", label: "Vault", icon: KeyRound },
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/log", label: "Log", icon: ScrollText },
+  { href: "/remote", label: "Remote", icon: Monitor },
 ];
 
 interface NavProps {
