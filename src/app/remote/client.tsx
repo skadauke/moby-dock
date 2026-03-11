@@ -181,6 +181,8 @@ export function RemoteClient() {
             url={wsUrl}
             scaleViewport
             showDotCursor
+            qualityLevel={6}
+            compressionLevel={2}
             background="black"
             style={{ width: "100%", height: "100%" }}
             onConnect={() => {
