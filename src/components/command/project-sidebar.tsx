@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useDroppable } from "@dnd-kit/core";
 import { Project } from "@/types/kanban";
+import { useKanbanDnd } from "./kanban-dnd-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +26,7 @@ const PROJECT_COLORS = [
 ];
 
 /**
- * Project item with edit/delete actions
+ * Project item with edit/delete actions and droppable zone for task reassignment
  */
 function ProjectItem({
   project,
@@ -36,6 +38,7 @@ function ProjectItem({
   onMoveDown,
   isFirst,
   isLast,
+  isDraggingTask,
 }: {
   project: Project;
   isSelected: boolean;
@@ -46,13 +49,23 @@ function ProjectItem({
   onMoveDown: () => void;
   isFirst: boolean;
   isLast: boolean;
+  isDraggingTask: boolean;
 }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `project-drop-${project.id}`,
+  });
+
   return (
     <div
+      ref={setNodeRef}
       className={`group flex items-center gap-1 px-2 py-2 rounded-md transition-all ${
-        isSelected
-          ? "bg-zinc-800 text-zinc-100"
-          : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+        isOver && isDraggingTask
+          ? "bg-blue-500/20 ring-2 ring-blue-500 text-zinc-100"
+          : isDraggingTask
+            ? "ring-1 ring-zinc-700 text-zinc-400"
+            : isSelected
+              ? "bg-zinc-800 text-zinc-100"
+              : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
       }`}
     >
       {/* Reorder buttons */}
@@ -107,6 +120,119 @@ function ProjectItem({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Collapsed project button with droppable zone
+ */
+function CollapsedProjectButton({
+  project,
+  isSelected,
+  onSelect,
+  isDraggingTask,
+}: {
+  project: Project;
+  isSelected: boolean;
+  onSelect: () => void;
+  isDraggingTask: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `project-drop-${project.id}`,
+  });
+
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={onSelect}
+      className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+        isOver && isDraggingTask
+          ? "ring-2 ring-blue-500 scale-110"
+          : isDraggingTask
+            ? "ring-1 ring-zinc-600"
+            : isSelected
+              ? "ring-2 ring-white"
+              : ""
+      }`}
+      style={{ backgroundColor: project.color }}
+      title={project.name}
+    >
+      <span className="text-white text-xs font-bold">
+        {project.name.charAt(0).toUpperCase()}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Droppable "All Tasks" button for collapsed sidebar
+ */
+function CollapsedAllTasksButton({
+  isSelected,
+  onSelect,
+  isDraggingTask,
+}: {
+  isSelected: boolean;
+  onSelect: () => void;
+  isDraggingTask: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "project-drop-none",
+  });
+
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={onSelect}
+      className={`mt-4 w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+        isOver && isDraggingTask
+          ? "bg-blue-500/20 ring-2 ring-blue-500"
+          : isDraggingTask
+            ? "ring-1 ring-zinc-600"
+            : isSelected
+              ? "bg-zinc-700"
+              : "hover:bg-zinc-800"
+      }`}
+      title="All Tasks (unassign project)"
+    >
+      <Folder className="h-4 w-4 text-zinc-400" />
+    </button>
+  );
+}
+
+/**
+ * Droppable "All Tasks" button for expanded sidebar
+ */
+function ExpandedAllTasksButton({
+  isSelected,
+  onSelect,
+  isDraggingTask,
+}: {
+  isSelected: boolean;
+  onSelect: () => void;
+  isDraggingTask: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "project-drop-none",
+  });
+
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={onSelect}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-all ${
+        isOver && isDraggingTask
+          ? "bg-blue-500/20 ring-2 ring-blue-500 text-zinc-100"
+          : isDraggingTask
+            ? "ring-1 ring-zinc-700 text-zinc-400"
+            : isSelected
+              ? "bg-zinc-800 text-zinc-100"
+              : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+      }`}
+    >
+      <Folder className="h-4 w-4" />
+      <span className="text-sm font-medium">All Tasks</span>
+    </button>
   );
 }
 
@@ -259,6 +385,8 @@ export function ProjectSidebar({ selectedProjectId, onSelectProject }: ProjectSi
     setProjectDescription("");
   };
 
+  const { isDraggingTask } = useKanbanDnd();
+
   // Collapsed view
   if (isCollapsed) {
     return (
@@ -271,30 +399,20 @@ export function ProjectSidebar({ selectedProjectId, onSelectProject }: ProjectSi
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
-        <button
-          onClick={() => onSelectProject(null)}
-          className={`mt-4 w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
-            selectedProjectId === null ? "bg-zinc-700" : "hover:bg-zinc-800"
-          }`}
-          title="All Tasks"
-        >
-          <Folder className="h-4 w-4 text-zinc-400" />
-        </button>
+        <CollapsedAllTasksButton
+          isSelected={selectedProjectId === null}
+          onSelect={() => onSelectProject(null)}
+          isDraggingTask={isDraggingTask}
+        />
         <div className="mt-2 space-y-2">
           {projects.map(project => (
-            <button
+            <CollapsedProjectButton
               key={project.id}
-              onClick={() => onSelectProject(project.id)}
-              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
-                selectedProjectId === project.id ? "ring-2 ring-white" : ""
-              }`}
-              style={{ backgroundColor: project.color }}
-              title={project.name}
-            >
-              <span className="text-white text-xs font-bold">
-                {project.name.charAt(0).toUpperCase()}
-              </span>
-            </button>
+              project={project}
+              isSelected={selectedProjectId === project.id}
+              onSelect={() => onSelectProject(project.id)}
+              isDraggingTask={isDraggingTask}
+            />
           ))}
         </div>
       </div>
@@ -330,18 +448,12 @@ export function ProjectSidebar({ selectedProjectId, onSelectProject }: ProjectSi
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
-          {/* All Tasks option */}
-          <button
-            onClick={() => onSelectProject(null)}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-all ${
-              selectedProjectId === null
-                ? "bg-zinc-800 text-zinc-100"
-                : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
-            }`}
-          >
-            <Folder className="h-4 w-4" />
-            <span className="text-sm font-medium">All Tasks</span>
-          </button>
+          {/* All Tasks option (droppable to unassign project) */}
+          <ExpandedAllTasksButton
+            isSelected={selectedProjectId === null}
+            onSelect={() => onSelectProject(null)}
+            isDraggingTask={isDraggingTask}
+          />
 
           {isLoading ? (
             <div className="px-3 py-4 text-sm text-zinc-500">Loading...</div>
@@ -359,6 +471,7 @@ export function ProjectSidebar({ selectedProjectId, onSelectProject }: ProjectSi
                   onMoveDown={() => handleMoveProject(project.id, "down")}
                   isFirst={index === 0}
                   isLast={index === projects.length - 1}
+                  isDraggingTask={isDraggingTask}
                 />
               ))}
             </div>
