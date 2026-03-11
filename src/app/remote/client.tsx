@@ -8,14 +8,16 @@ import {
   Maximize,
   Minimize,
   RefreshCw,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Dynamic import to avoid SSR issues — react-vnc uses Canvas and WebSocket
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const VncScreen = dynamic(
   () => import("react-vnc").then((m) => m.VncScreen),
   { ssr: false }
-);
+) as any; // ref forwarding types lost through dynamic()
 
 export function RemoteClient() {
   const [connected, setConnected] = useState(false);
@@ -23,13 +25,17 @@ export function RemoteClient() {
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [password, setPassword] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vncRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
     setError(null);
+    setNeedsPassword(false);
     try {
-      // Fetch the file server token from our API
       const res = await fetch("/api/remote/token");
       if (!res.ok) throw new Error("Failed to get connection token");
       const { token } = await res.json();
@@ -44,7 +50,18 @@ export function RemoteClient() {
     setConnected(false);
     setConnecting(false);
     setWsUrl(null);
+    setNeedsPassword(false);
+    setPassword("");
   }, []);
+
+  const handlePasswordSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (vncRef.current && password) {
+      vncRef.current.sendCredentials({ password });
+      setNeedsPassword(false);
+      setPassword("");
+    }
+  }, [password]);
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return;
@@ -71,28 +88,30 @@ export function RemoteClient() {
               Connected
             </span>
           )}
-          {connecting && !connected && (
+          {connecting && !connected && !needsPassword && (
             <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
               Connecting...
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {connected && (
+          {(connected || connecting) && (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleFullscreen}
-                className="text-zinc-400"
-                title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-              >
-                {isFullscreen ? (
-                  <Minimize className="h-4 w-4" />
-                ) : (
-                  <Maximize className="h-4 w-4" />
-                )}
-              </Button>
+              {connected && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleFullscreen}
+                  className="text-zinc-400"
+                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <Minimize className="h-4 w-4" />
+                  ) : (
+                    <Maximize className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -118,9 +137,10 @@ export function RemoteClient() {
       </header>
 
       {/* VNC Display */}
-      <div className="flex-1 flex items-center justify-center overflow-hidden bg-black">
-        {wsUrl && (connecting || connected) ? (
+      <div className="flex-1 flex items-center justify-center overflow-hidden bg-black relative">
+        {wsUrl && (connecting || connected) && (
           <VncScreen
+            ref={vncRef}
             url={wsUrl}
             scaleViewport
             background="black"
@@ -128,19 +148,58 @@ export function RemoteClient() {
             onConnect={() => {
               setConnected(true);
               setConnecting(false);
+              setNeedsPassword(false);
             }}
             onDisconnect={() => {
               setConnected(false);
               setConnecting(false);
+              setWsUrl(null);
+            }}
+            onCredentialsRequired={() => {
+              setNeedsPassword(true);
             }}
             onSecurityFailure={(e: CustomEvent) => {
               setError(
-                `Security failure: ${(e?.detail as Record<string, string>)?.reason || "Unknown"}`
+                `Security failure: ${(e?.detail as Record<string, string>)?.reason || "Authentication or authorization failure"}`
               );
               setConnecting(false);
+              setWsUrl(null);
             }}
           />
-        ) : (
+        )}
+
+        {/* Password prompt overlay */}
+        {needsPassword && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+            <form onSubmit={handlePasswordSubmit} className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80 space-y-4">
+              <div className="flex items-center gap-2 text-zinc-100">
+                <Lock className="h-5 w-5" />
+                <h2 className="font-semibold">VNC Password</h2>
+              </div>
+              <p className="text-zinc-400 text-sm">
+                Enter the Screen Sharing password for the Mac mini.
+              </p>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoFocus
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <Button
+                type="submit"
+                disabled={!password}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                Connect
+              </Button>
+            </form>
+          </div>
+        )}
+
+        {/* Disconnected state */}
+        {!wsUrl && !connecting && (
           <div className="text-center">
             {error ? (
               <div className="space-y-4">
