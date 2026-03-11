@@ -147,6 +147,7 @@ export function RemoteClient() {
             ref={vncRef}
             url={wsUrl}
             scaleViewport
+            showDotCursor
             background="black"
             style={{ width: "100%", height: "100%" }}
             onConnect={() => {
