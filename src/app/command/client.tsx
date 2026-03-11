@@ -60,14 +60,18 @@ export function CommandClient({ initialTasks }: CommandClientProps) {
       result = result.filter(t => t.projectId === selectedProjectId);
     }
     
-    // Then apply status/creator filter
+    // Then apply status/assignment filter
     switch (filter) {
       case "flagged":
         return result.filter(t => t.needsReview);
       case "moby":
-        return result.filter(t => t.creator === "MOBY");
+        return result.filter(t => t.assignedAgent === "main");
+      case "cody":
+        return result.filter(t => t.assignedAgent === "dev");
       case "stephan":
-        return result.filter(t => t.creator === "STEPHAN");
+        return result.filter(t => t.assignedAgent === "stephan");
+      case "unassigned":
+        return result.filter(t => t.assignedAgent === null || t.assignedAgent === undefined);
       default:
         return result;
     }

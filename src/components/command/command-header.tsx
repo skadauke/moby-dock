@@ -8,7 +8,7 @@ import { Task, Creator } from "@/types/kanban";
 import { Plus, Flag, X, RefreshCw, Zap } from "lucide-react";
 import { useLogger } from "next-axiom";
 
-export type FilterType = "all" | "flagged" | "moby" | "stephan";
+export type FilterType = "all" | "flagged" | "moby" | "cody" | "stephan" | "unassigned";
 
 interface CommandHeaderProps {
   onTaskCreated: (task: Task) => void;
@@ -135,18 +135,36 @@ export function CommandHeader({
                 size="sm"
                 onClick={() => onFilterChange("moby")}
                 className={`h-7 px-2 ${filter === "moby" ? "bg-zinc-700" : "text-zinc-400"}`}
-                title="Show Moby's tasks"
+                title="Assigned to Moby"
               >
                 🐋
+              </Button>
+              <Button
+                variant={filter === "cody" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => onFilterChange("cody")}
+                className={`h-7 px-2 ${filter === "cody" ? "bg-zinc-700" : "text-zinc-400"}`}
+                title="Assigned to Cody"
+              >
+                🐙
               </Button>
               <Button
                 variant={filter === "stephan" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => onFilterChange("stephan")}
                 className={`h-7 px-2 ${filter === "stephan" ? "bg-zinc-700" : "text-zinc-400"}`}
-                title="Show Stephan's tasks"
+                title="Assigned to Stephan"
               >
                 👤
+              </Button>
+              <Button
+                variant={filter === "unassigned" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => onFilterChange("unassigned")}
+                className={`h-7 px-2 ${filter === "unassigned" ? "bg-zinc-700" : "text-zinc-400"}`}
+                title="Unassigned tasks"
+              >
+                ○
               </Button>
               {filter !== "all" && (
                 <Button
