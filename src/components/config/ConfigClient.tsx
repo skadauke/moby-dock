@@ -7,7 +7,8 @@ import { FileTree } from "./FileTree";
 import { CodeEditor } from "./CodeEditor";
 import { QuickAccess } from "./QuickAccess";
 import { SearchPanel } from "./SearchPanel";
-import { readFile, writeFile, BASE_PATHS } from "@/lib/file-api";
+import { readFile, writeFile, BASE_PATHS, getBasePaths } from "@/lib/file-api";
+import type { AgentInfo } from "@/lib/file-api";
 
 export function ConfigClient() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -21,10 +22,32 @@ export function ConfigClient() {
 
   const [serverModifiedAt, setServerModifiedAt] = useState<string | null>(null);
   const [isReloading, setIsReloading] = useState(false);
+  const [agents, setAgents] = useState<AgentInfo[] | null>(null);
 
   const hasChanges = content !== originalContent;
   const filename = selectedPath?.split("/").pop() || "";
   const isOpenClawConfig = filename === "openclaw.json";
+
+  // Dynamic base paths: use agent-based paths if available, fallback to hardcoded
+  const basePaths = agents && agents.length > 0 ? getBasePaths(agents) : BASE_PATHS;
+
+  // Fetch agents on mount
+  useEffect(() => {
+    async function fetchAgents() {
+      try {
+        const res = await fetch("/api/agents");
+        if (!res.ok) throw new Error("Failed to fetch agents");
+        const data = await res.json();
+        if (data.agents && data.agents.length > 0) {
+          setAgents(data.agents);
+        }
+      } catch (err) {
+        console.error("Failed to fetch agents, using fallback paths:", err);
+        // Keep agents as null — fallback to BASE_PATHS
+      }
+    }
+    fetchAgents();
+  }, []);
 
   // Load file content
   const loadFile = useCallback(async (path: string) => {
@@ -197,7 +220,7 @@ export function ConfigClient() {
           <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-2 mb-2 mt-4">
             Browse
           </h3>
-          {BASE_PATHS.map((base) => (
+          {basePaths.map((base) => (
             <FileTree
               key={base.path}
               basePath={base.path}

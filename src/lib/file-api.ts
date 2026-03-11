@@ -69,7 +69,58 @@ export async function deleteFile(filePath: string): Promise<void> {
   });
 }
 
-// Quick access files
+// Agent info from /api/agents
+export interface AgentInfo {
+  id: string;
+  name: string;
+  workspace: string;
+  emoji?: string;
+  isDefault: boolean;
+}
+
+// Workspace files that agents typically have
+const WORKSPACE_FILES = ['SOUL.md', 'AGENTS.md', 'MEMORY.md', 'HEARTBEAT.md', 'TOOLS.md', 'IDENTITY.md', 'USER.md'];
+
+// Dynamic base paths from agent list
+export function getBasePaths(agents: AgentInfo[]): { name: string; path: string; description: string }[] {
+  const paths = agents.map(a => ({
+    name: `${a.emoji || '📁'} ${a.name}`,
+    path: a.workspace,
+    description: a.workspace.replace(HOME, '~'),
+  }));
+  paths.push({ name: 'OpenClaw', path: `${HOME}/.openclaw`, description: '~/.openclaw' });
+  return paths;
+}
+
+// Dynamic quick access files grouped by agent
+export interface QuickAccessGroup {
+  agent: string;
+  emoji?: string;
+  files: { name: string; path: string; description: string }[];
+}
+
+export function getQuickAccessFiles(agents: AgentInfo[]): QuickAccessGroup[] {
+  const groups: QuickAccessGroup[] = agents.map(a => ({
+    agent: a.name,
+    emoji: a.emoji,
+    files: WORKSPACE_FILES.map(f => ({
+      name: f,
+      path: `${a.workspace}/${f}`,
+      description: f.replace('.md', ''),
+    })),
+  }));
+  // Add shared OpenClaw group
+  groups.push({
+    agent: 'OpenClaw',
+    emoji: undefined,
+    files: [
+      { name: 'openclaw.json', path: `${HOME}/.openclaw/openclaw.json`, description: 'Gateway config' },
+    ],
+  });
+  return groups;
+}
+
+// Legacy hardcoded exports (fallback when agent discovery fails)
 export const QUICK_ACCESS_FILES = [
   { name: 'SOUL.md', path: `${HOME}/clawd/SOUL.md`, description: 'Personality & persona' },
   { name: 'AGENTS.md', path: `${HOME}/clawd/AGENTS.md`, description: 'Workspace rules' },
@@ -81,7 +132,7 @@ export const QUICK_ACCESS_FILES = [
   { name: 'openclaw.json', path: `${HOME}/.openclaw/openclaw.json`, description: 'Gateway config' },
 ];
 
-// Base paths for file tree
+// Legacy hardcoded base paths (fallback when agent discovery fails)
 export const BASE_PATHS = [
   { name: 'Workspace', path: `${HOME}/clawd`, description: '~/clawd' },
   { name: 'OpenClaw', path: `${HOME}/.openclaw`, description: '~/.openclaw' },
