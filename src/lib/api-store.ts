@@ -14,6 +14,7 @@ interface TaskRow {
   needs_review: boolean;
   position: number;
   project_id: string | null;
+  assigned_agent: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ function rowToTask(row: TaskRow): Task {
     needsReview: row.needs_review,
     position: row.position,
     projectId: row.project_id,
+    assignedAgent: row.assigned_agent,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -104,6 +106,7 @@ export async function createTask(data: {
   priority?: Priority;
   creator?: Creator;
   projectId?: string;
+  assignedAgent?: string;
 }): Promise<Result<Task, DbError>> {
   const log = new Logger({ source: "store/tasks" });
   try {
@@ -136,6 +139,7 @@ export async function createTask(data: {
         needs_review: false,
         position: maxPos + 1,
         project_id: data.projectId || null,
+        assigned_agent: data.assignedAgent || null,
       })
       .select()
       .single();
@@ -174,6 +178,7 @@ export async function updateTask(
     needsReview: boolean;
     position: number;
     projectId: string | null;
+    assignedAgent: string | null;
   }>
 ): Promise<Result<Task, DbError>> {
   const log = new Logger({ source: "store/tasks" });
@@ -189,6 +194,7 @@ export async function updateTask(
     if (data.needsReview !== undefined) updates.needs_review = data.needsReview;
     if (data.position !== undefined) updates.position = data.position;
     if (data.projectId !== undefined) updates.project_id = data.projectId;
+    if (data.assignedAgent !== undefined) updates.assigned_agent = data.assignedAgent;
 
     if (Object.keys(updates).length === 0) {
       await log.flush();

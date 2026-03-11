@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { title, description, priority, creator, projectId } = body;
+  const { title, description, priority, creator, projectId, assignedAgent } = body;
 
   log.info("POST /api/tasks", {
     priority,
@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
     priority,
     creator,
     projectId,
+    assignedAgent,
   });
   const duration = Date.now() - startTime;
 

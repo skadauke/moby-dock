@@ -24,6 +24,7 @@ export interface Task {
   needsReview: boolean;
   position: number;
   projectId: string | null;
+  assignedAgent: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

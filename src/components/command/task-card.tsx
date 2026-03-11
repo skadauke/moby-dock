@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Task, PRIORITIES, CREATORS } from "@/types/kanban";
 import { useKanbanDnd } from "./kanban-dnd-context";
+import type { AgentInfo } from "@/app/api/agents/route";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,28 @@ import {
 import { MoreHorizontal, Flag, Trash2, Pencil } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 
+// Module-level agent cache to avoid re-fetching per card
+let agentCache: AgentInfo[] | null = null;
+let agentCachePromise: Promise<AgentInfo[]> | null = null;
+
+function fetchAgents(): Promise<AgentInfo[]> {
+  if (agentCache) return Promise.resolve(agentCache);
+  if (agentCachePromise) return agentCachePromise;
+  agentCachePromise = fetch("/api/agents")
+    .then(res => res.ok ? res.json() : { agents: [] })
+    .then(data => {
+      const list: AgentInfo[] = data.agents || [];
+      agentCache = list;
+      return list;
+    })
+    .catch(() => {
+      const empty: AgentInfo[] = [];
+      agentCache = empty;
+      return empty;
+    });
+  return agentCachePromise;
+}
+
 interface TaskCardProps {
   task: Task;
   onEdit?: (task: Task) => void;
@@ -34,6 +57,13 @@ interface TaskCardProps {
 
 export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [agents, setAgents] = useState<AgentInfo[]>(agentCache || []);
+
+  useEffect(() => {
+    if (!agentCache) {
+      fetchAgents().then(setAgents);
+    }
+  }, []);
   const {
     attributes,
     listeners,
@@ -53,6 +83,7 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
 
   const priority = PRIORITIES.find((p) => p.value === task.priority);
   const creator = CREATORS.find((c) => c.value === task.creator);
+  const assignedAgent = task.assignedAgent ? agents.find(a => a.id === task.assignedAgent) : null;
 
   const handleDelete = () => {
     setShowDeleteConfirm(true);
@@ -95,6 +126,16 @@ export function TaskCard({ task, onEdit, onDelete, onToggleFlag }: TaskCardProps
           <span className={`text-sm flex-shrink-0 ${isDone ? "opacity-50" : ""}`}>
             {creator?.emoji}
           </span>
+          
+          {/* Assigned agent emoji */}
+          {assignedAgent?.emoji && (
+            <span 
+              className={`text-xs flex-shrink-0 ${isDone ? "opacity-50" : ""}`} 
+              title={`Assigned to ${assignedAgent.name}`}
+            >
+              {assignedAgent.emoji}
+            </span>
+          )}
           
           {/* Title */}
           <div className="flex-1 min-w-0">
