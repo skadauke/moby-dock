@@ -22,19 +22,28 @@ export function RemoteClient() {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // WebSocket URL for VNC proxy (through Cloudflare tunnel)
-  const wsUrl = "wss://files.skadauke.dev/vnc";
-
-  const handleConnect = useCallback(() => {
+  const handleConnect = useCallback(async () => {
     setConnecting(true);
     setError(null);
+    try {
+      // Fetch the file server token from our API
+      const res = await fetch("/api/remote/token");
+      if (!res.ok) throw new Error("Failed to get connection token");
+      const { token } = await res.json();
+      setWsUrl(`wss://files.skadauke.dev/vnc?token=${token}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection failed");
+      setConnecting(false);
+    }
   }, []);
 
   const handleDisconnect = useCallback(() => {
     setConnected(false);
     setConnecting(false);
+    setWsUrl(null);
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -110,7 +119,7 @@ export function RemoteClient() {
 
       {/* VNC Display */}
       <div className="flex-1 flex items-center justify-center overflow-hidden bg-black">
-        {connecting || connected ? (
+        {wsUrl && (connecting || connected) ? (
           <VncScreen
             url={wsUrl}
             scaleViewport
