@@ -67,14 +67,25 @@ export async function GET(req: NextRequest) {
   interface AxiomFilter {
     field: string;
     op: string;
-    value: string | string[];
+    value: string;
+    children?: AxiomFilter[];
   }
   const filters: AxiomFilter[] = [];
   if (levels && levels.length > 0) {
-    filters.push({ field: "data.level", op: "==", value: levels.length === 1 ? levels[0] : levels });
+    if (levels.length === 1) {
+      filters.push({ field: "level", op: "==", value: levels[0] });
+    } else {
+      // Multiple levels: use OR with separate == filters
+      filters.push({
+        field: "",
+        op: "or",
+        value: "",
+        children: levels.map((l) => ({ field: "level", op: "==", value: l })),
+      });
+    }
   }
   if (search) {
-    filters.push({ field: "data.message", op: "contains", value: search });
+    filters.push({ field: "message", op: "contains", value: search });
   }
 
   const queryBody: Record<string, unknown> = {
@@ -83,9 +94,13 @@ export async function GET(req: NextRequest) {
     limit: limit + 1,
   };
   if (filters.length > 0) {
+    const buildFilter = (f: AxiomFilter): Record<string, unknown> => {
+      if (f.children) return { op: f.op, children: f.children.map(buildFilter) };
+      return { field: f.field, op: f.op, value: f.value };
+    };
     queryBody.filter = filters.length === 1
-      ? { field: filters[0].field, op: filters[0].op, value: filters[0].value }
-      : { op: "and", children: filters.map(f => ({ field: f.field, op: f.op, value: f.value })) };
+      ? buildFilter(filters[0])
+      : { op: "and", children: filters.map(buildFilter) };
   }
 
   const start = Date.now();
