@@ -14,7 +14,7 @@ import { getTaskById, updateTask, deleteTask } from "@/lib/api-store";
 /** Allowed fields for PATCH updates (whitelist) */
 const ALLOWED_UPDATE_FIELDS = [
   'title', 'description', 'status', 'priority', 'flagged',
-  'dueDate', 'projectId', 'details', 'position'
+  'dueDate', 'projectId', 'details', 'position', 'assignedAgent'
 ] as const;
 
 interface Params {

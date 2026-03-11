@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Task, Project, Priority, Creator, Status, PRIORITIES, CREATORS } from "@/types/kanban";
+import { AgentInfo } from "@/app/api/agents/route";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDateTime } from "@/lib/date-utils";
 
@@ -49,20 +50,26 @@ export function TaskModal({
   const [priority, setPriority] = useState<Priority | "">("");
   const [creator, setCreator] = useState<Creator>("MOBY");
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [assignedAgent, setAssignedAgent] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
 
   const isEditing = !!task;
 
-  // Fetch projects when modal opens
+  // Fetch projects and agents when modal opens
   useEffect(() => {
     if (open) {
       fetch("/api/projects")
         .then(res => res.ok ? res.json() : [])
         .then(data => setProjects(data))
         .catch(() => setProjects([]));
+      fetch("/api/agents")
+        .then(res => res.ok ? res.json() : { agents: [] })
+        .then(data => setAgents(data.agents || []))
+        .catch(() => setAgents([]));
     }
   }, [open]);
 
@@ -73,12 +80,14 @@ export function TaskModal({
       setPriority(task.priority || "");
       setCreator(task.creator);
       setProjectId(task.projectId);
+      setAssignedAgent(task.assignedAgent);
     } else {
       setTitle("");
       setDescription("");
       setPriority("");
       setCreator(defaultCreator);
       setProjectId(defaultProjectId);
+      setAssignedAgent(null);
     }
     setError(null);
     setIsEditingDescription(!task); // Start in edit mode for new tasks
@@ -102,6 +111,7 @@ export function TaskModal({
             priority: priority || null,
             creator,
             projectId,
+            assignedAgent,
           }),
         });
         
@@ -120,6 +130,7 @@ export function TaskModal({
             priority: priority || undefined,
             creator,
             projectId: projectId || undefined,
+            assignedAgent: assignedAgent || undefined,
             status: defaultStatus,
           }),
         });
@@ -137,7 +148,7 @@ export function TaskModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [title, description, priority, creator, projectId, isEditing, task, isSubmitting, onTaskUpdated, onTaskCreated, onClose, defaultStatus]);
+  }, [title, description, priority, creator, projectId, assignedAgent, isEditing, task, isSubmitting, onTaskUpdated, onTaskCreated, onClose, defaultStatus]);
 
   // Keyboard shortcut: Cmd/Ctrl+Enter to submit
   useEffect(() => {
@@ -298,6 +309,35 @@ export function TaskModal({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Agent selector */}
+          {agents.length > 0 && (
+            <div className="space-y-2">
+              <Label>Assigned Agent</Label>
+              <Select 
+                value={assignedAgent || "none"} 
+                onValueChange={(v) => setAssignedAgent(v === "none" ? null : v)}
+                disabled={isSubmitting}
+              >
+                <SelectTrigger className="bg-zinc-900 border-zinc-800">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  <SelectItem value="none">
+                    <span className="text-zinc-400">Unassigned</span>
+                  </SelectItem>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      <span className="flex items-center gap-2">
+                        {agent.emoji && <span>{agent.emoji}</span>}
+                        {agent.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Timestamps - only show for existing tasks */}
           {isEditing && task && (
