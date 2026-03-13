@@ -236,10 +236,10 @@ export function RemoteClient() {
             <form onSubmit={handleLoginSubmit} className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80 space-y-4 text-left">
               <div className="flex items-center gap-2 text-zinc-100">
                 <Lock className="h-5 w-5" />
-                <h2 className="font-semibold">Screen Sharing</h2>
+                <h2 className="font-semibold">Remote Desktop</h2>
               </div>
               <p className="text-zinc-400 text-sm">
-                Enter your macOS credentials to connect.
+                Enter your VNC credentials to connect.
               </p>
               <input
                 type="text"
