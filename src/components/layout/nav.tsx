@@ -14,6 +14,7 @@ import {
   Monitor,
   LogOut,
   Github,
+  Triangle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -93,18 +94,31 @@ export function Nav({ user }: NavProps) {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* GitHub link */}
-        {process.env.NEXT_PUBLIC_GITHUB_REPO && (
-          <a
-            href={process.env.NEXT_PUBLIC_GITHUB_REPO}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-400 hover:text-zinc-100 transition-colors"
-            aria-label="View on GitHub"
-          >
-            <Github className="h-5 w-5" />
-          </a>
-        )}
+        {/* External links */}
+        <div className="flex items-center gap-3">
+          {process.env.NEXT_PUBLIC_GITHUB_REPO && (
+            <a
+              href={process.env.NEXT_PUBLIC_GITHUB_REPO}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-400 hover:text-zinc-100 transition-colors"
+              aria-label="View on GitHub"
+            >
+              <Github className="h-5 w-5" />
+            </a>
+          )}
+          {process.env.NEXT_PUBLIC_VERCEL_PROJECT && (
+            <a
+              href={`https://vercel.com/${process.env.NEXT_PUBLIC_VERCEL_PROJECT}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-400 hover:text-zinc-100 transition-colors"
+              aria-label="View on Vercel"
+            >
+              <Triangle className="h-4 w-4" />
+            </a>
+          )}
+        </div>
 
         {/* User menu */}
         {user && (
