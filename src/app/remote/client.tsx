@@ -20,8 +20,10 @@ const VncScreen = dynamic(
 ) as any; // ref forwarding types lost through dynamic()
 
 // Derive WebSocket URL from file server URL
-const fileServerUrl = process.env.NEXT_PUBLIC_FILE_SERVER_URL || "";
-const wsBase = fileServerUrl.replace(/^http/, "ws");
+const fileServerUrl = (process.env.NEXT_PUBLIC_FILE_SERVER_URL || "").trim();
+const wsBase = fileServerUrl
+  .replace(/^http(s?):\/\//, "ws$1://")
+  .replace(/\/+$/, "");
 
 export function RemoteClient() {
   const [connected, setConnected] = useState(false);
@@ -58,7 +60,12 @@ export function RemoteClient() {
       // Store credentials for when onCredentialsRequired fires
       setUsername(user);
       setPassword(pass);
-      setWsUrl(`${wsBase}/vnc?token=${token}`);
+      if (!wsBase) {
+        throw new Error("File server URL is not configured");
+      }
+      const url = new URL("/vnc", wsBase);
+      url.searchParams.set("token", token);
+      setWsUrl(url.toString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection failed");
       setConnecting(false);

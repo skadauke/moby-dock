@@ -36,7 +36,7 @@ import type {
 import { groupByTemporalBucket } from "@/lib/temporal-bucket";
 import { useAgents } from "@/lib/agents-api";
 
-const HOME = process.env.NEXT_PUBLIC_HOME_DIR || "";
+const HOME = process.env.NEXT_PUBLIC_HOME_DIR?.trim();
 
 // ── Types ───────────────────────────────────────────────────────────
 type ViewMode =

@@ -41,6 +41,8 @@ describe("validateCsrfOrigin", () => {
   beforeEach(() => {
     vi.resetModules();
     process.env = { ...originalEnv };
+    // Set BETTER_AUTH_URL so production + preview patterns work
+    process.env.BETTER_AUTH_URL = "https://moby-dock.vercel.app";
   });
 
   afterEach(() => {
@@ -48,11 +50,14 @@ describe("validateCsrfOrigin", () => {
   });
 
   describe("with Origin header", () => {
-    it("allows requests from production domain", () => {
+    it("allows requests from production domain", async () => {
+      process.env.BETTER_AUTH_URL = "https://moby-dock.vercel.app";
+      vi.resetModules();
+      const { validateCsrfOrigin: validateWithEnv } = await import("@/lib/csrf");
       const request = createMockRequest({
         origin: "https://moby-dock.vercel.app",
       });
-      const result = validateCsrfOrigin(request);
+      const result = validateWithEnv(request);
       expect(result.valid).toBe(true);
     });
 
@@ -72,11 +77,14 @@ describe("validateCsrfOrigin", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("allows requests from Vercel preview deployments", () => {
+    it("allows requests from Vercel preview deployments", async () => {
+      process.env.BETTER_AUTH_URL = "https://moby-dock.vercel.app";
+      vi.resetModules();
+      const { validateCsrfOrigin: validateWithEnv } = await import("@/lib/csrf");
       const request = createMockRequest({
         origin: "https://moby-dock-abc123-skadaukes-projects.vercel.app",
       });
-      const result = validateCsrfOrigin(request);
+      const result = validateWithEnv(request);
       expect(result.valid).toBe(true);
     });
 
@@ -124,11 +132,14 @@ describe("validateCsrfOrigin", () => {
   });
 
   describe("with Referer header (fallback)", () => {
-    it("allows requests with valid Referer when Origin missing", () => {
+    it("allows requests with valid Referer when Origin missing", async () => {
+      process.env.BETTER_AUTH_URL = "https://moby-dock.vercel.app";
+      vi.resetModules();
+      const { validateCsrfOrigin: validateWithEnv } = await import("@/lib/csrf");
       const request = createMockRequest({
         referer: "https://moby-dock.vercel.app/some/page",
       });
-      const result = validateCsrfOrigin(request);
+      const result = validateWithEnv(request);
       expect(result.valid).toBe(true);
     });
 
@@ -140,12 +151,15 @@ describe("validateCsrfOrigin", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("allows Vercel preview Referer", () => {
+    it("allows Vercel preview Referer", async () => {
+      process.env.BETTER_AUTH_URL = "https://moby-dock.vercel.app";
+      vi.resetModules();
+      const { validateCsrfOrigin: validateWithEnv } = await import("@/lib/csrf");
       const request = createMockRequest({
         referer:
           "https://moby-dock-git-feature-skadaukes-projects.vercel.app/vault",
       });
-      const result = validateCsrfOrigin(request);
+      const result = validateWithEnv(request);
       expect(result.valid).toBe(true);
     });
 

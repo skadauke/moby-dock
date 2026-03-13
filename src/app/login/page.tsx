@@ -16,12 +16,28 @@ import {
 const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "";
 
 // Allowed redirect origins (to prevent open redirect attacks)
-const ALLOWED_REDIRECT_PATTERNS = [
-  /^https:\/\/moby-dock(-[a-z0-9-]+)?\.vercel\.app$/, // Vercel preview deployments
-  /^https:\/\/moby-dock\.vercel\.app$/, // Production
-  /^http:\/\/localhost:\d+$/, // Local development
-  /^http:\/\/127\.0\.0\.1:\d+$/, // Local development
-];
+// Derives patterns from the configured production URL
+const ALLOWED_REDIRECT_PATTERNS: RegExp[] = (() => {
+  const patterns: RegExp[] = [
+    /^http:\/\/localhost:\d+$/, // Local development
+    /^http:\/\/127\.0\.0\.1:\d+$/, // Local development
+  ];
+  if (PRODUCTION_URL) {
+    try {
+      const host = new URL(PRODUCTION_URL).hostname;
+      if (host.endsWith(".vercel.app")) {
+        // Allow production + preview deployments (project-hash-team.vercel.app)
+        const project = host.replace(".vercel.app", "");
+        const escaped = project.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        patterns.unshift(new RegExp(`^https://${escaped}(-[a-z0-9-]+)?\\.vercel\\.app$`));
+      } else if (host) {
+        const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        patterns.unshift(new RegExp(`^https://${escaped}$`));
+      }
+    } catch { /* skip */ }
+  }
+  return patterns;
+})();
 
 /**
  * Validate that a return URL is safe (same-origin or known preview domains)
@@ -51,14 +67,17 @@ function isValidReturnUrl(url: string): boolean {
 // Check if we're on the production/auth host (including localhost for dev)
 function checkIsProduction(): boolean {
   if (typeof window === "undefined") return false;
+  
+  // If no production URL configured, treat current host as production
+  if (!PRODUCTION_URL) return true;
+  
   const hostname = window.location.hostname;
   
-  // Derive production hostname from PRODUCTION_URL
   let prodHostname = "";
   try {
     prodHostname = new URL(PRODUCTION_URL).hostname;
   } catch {
-    // No production URL configured
+    return true; // Can't parse URL, treat as production to avoid redirect loop
   }
   
   return hostname === prodHostname || 

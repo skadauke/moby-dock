@@ -11,7 +11,7 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
-const MOBY_API_TOKEN = process.env.MOBY_API_TOKEN || "";
+const DOCK_API_TOKEN = process.env.DOCK_API_TOKEN || process.env.MOBY_API_TOKEN || "";
 
 interface AuthResult {
   authenticated: boolean;
@@ -34,12 +34,12 @@ export async function checkApiAuth(): Promise<AuthResult> {
   }
 
   // Then, try Bearer token auth (Moby)
-  if (MOBY_API_TOKEN) {
+  if (DOCK_API_TOKEN) {
     const headersList = await headers();
     const authHeader = headersList.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      if (token === MOBY_API_TOKEN) {
+      if (token === DOCK_API_TOKEN) {
         return {
           authenticated: true,
           userId: "moby", // Service account identifier

@@ -24,7 +24,7 @@ function getAllowedOrigins(): Set<string> {
     origins.add(`https://${process.env.VERCEL_URL}`);
   }
 
-  // Add production URL
+  // Add production URL and derive Vercel preview pattern
   if (process.env.BETTER_AUTH_URL) {
     try {
       const parsed = new URL(process.env.BETTER_AUTH_URL);
@@ -33,6 +33,25 @@ function getAllowedOrigins(): Set<string> {
   }
 
   return origins;
+}
+
+/**
+ * Check if an origin matches a Vercel preview deployment for our project.
+ * Derives the project name from BETTER_AUTH_URL (e.g. my-app.vercel.app → my-app-*.vercel.app)
+ */
+function isVercelPreviewOrigin(origin: string): boolean {
+  const prodUrl = process.env.BETTER_AUTH_URL;
+  if (!prodUrl) return false;
+  try {
+    const prodHost = new URL(prodUrl).hostname;
+    if (!prodHost.endsWith(".vercel.app")) return false;
+    const project = prodHost.replace(".vercel.app", "");
+    // Match preview URLs like my-app-abc123-team.vercel.app
+    const pattern = new RegExp(`^https://${project.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(-[a-z0-9-]+)?\\.vercel\\.app$`);
+    return pattern.test(origin);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -78,11 +97,8 @@ export function validateCsrfOrigin(request: NextRequest): {
       return { valid: true };
     }
 
-    // Check if it's a Vercel preview deployment (pattern: *-skadaukes-projects.vercel.app)
-    // This allows any preview deployment from the same Vercel team
-    if (
-      origin.match(/^https:\/\/[a-z0-9-]+\.vercel\.app$/)
-    ) {
+    // Check if it's a Vercel preview deployment for our project
+    if (isVercelPreviewOrigin(origin)) {
       return { valid: true };
     }
 
@@ -100,11 +116,7 @@ export function validateCsrfOrigin(request: NextRequest): {
     }
 
     // Check Vercel preview pattern for referer
-    if (
-      refererOrigin?.match(
-        /^https:\/\/[a-z0-9-]+\.vercel\.app$/
-      )
-    ) {
+    if (refererOrigin && isVercelPreviewOrigin(refererOrigin)) {
       return { valid: true };
     }
 

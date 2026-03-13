@@ -20,7 +20,8 @@ const PORT = process.env.PORT || 3001;
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
 // Allowed base paths - files outside these are blocked
-const HOME = process.env.HOME || process.env.USERPROFILE || '';
+const os = require('os');
+const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
 const ALLOWED_PATHS = (process.env.ALLOWED_FILE_PATHS || `${HOME}/clawd,${HOME}/clawd-dev,${HOME}/.openclaw,${HOME}/openclaw/skills`)
   .split(',').map(p => p.trim()).filter(Boolean);
 

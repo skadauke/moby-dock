@@ -159,8 +159,8 @@ export function SearchPanel({ onSelectResult }: SearchPanelProps) {
   };
 
   const getRelativePath = (path: string) => {
-    const home = process.env.NEXT_PUBLIC_HOME_DIR || "";
-    if (path.startsWith(home)) {
+    const home = process.env.NEXT_PUBLIC_HOME_DIR?.trim();
+    if (home && path.startsWith(home)) {
       return "~" + path.slice(home.length);
     }
     return path;
