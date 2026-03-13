@@ -13,10 +13,10 @@ import {
 import { Button } from "@/components/ui/button";
 
 // Dynamic import to avoid SSR issues — react-vnc uses Canvas and WebSocket
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const VncScreen = dynamic(
   () => import("react-vnc").then((m) => m.VncScreen),
   { ssr: false }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) as any; // ref forwarding types lost through dynamic()
 
 // Derive WebSocket URL from file server URL
