@@ -159,7 +159,7 @@ export function SearchPanel({ onSelectResult }: SearchPanelProps) {
   };
 
   const getRelativePath = (path: string) => {
-    const home = "/Users/skadauke";
+    const home = process.env.NEXT_PUBLIC_HOME_DIR || "";
     if (path.startsWith(home)) {
       return "~" + path.slice(home.length);
     }

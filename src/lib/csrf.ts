@@ -15,7 +15,6 @@ import { NextRequest } from "next/server";
  */
 function getAllowedOrigins(): Set<string> {
   const origins = new Set<string>([
-    "https://moby-dock.vercel.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
   ]);
@@ -25,14 +24,12 @@ function getAllowedOrigins(): Set<string> {
     origins.add(`https://${process.env.VERCEL_URL}`);
   }
 
-  // Add custom BETTER_AUTH_URL if set (extract origin to handle paths/trailing slashes)
+  // Add production URL
   if (process.env.BETTER_AUTH_URL) {
     try {
       const parsed = new URL(process.env.BETTER_AUTH_URL);
       origins.add(parsed.origin);
-    } catch {
-      // Invalid URL, skip
-    }
+    } catch { /* skip */ }
   }
 
   return origins;
@@ -84,7 +81,7 @@ export function validateCsrfOrigin(request: NextRequest): {
     // Check if it's a Vercel preview deployment (pattern: *-skadaukes-projects.vercel.app)
     // This allows any preview deployment from the same Vercel team
     if (
-      origin.match(/^https:\/\/[a-z0-9-]+-skadaukes-projects\.vercel\.app$/)
+      origin.match(/^https:\/\/[a-z0-9-]+\.vercel\.app$/)
     ) {
       return { valid: true };
     }
@@ -105,7 +102,7 @@ export function validateCsrfOrigin(request: NextRequest): {
     // Check Vercel preview pattern for referer
     if (
       refererOrigin?.match(
-        /^https:\/\/[a-z0-9-]+-skadaukes-projects\.vercel\.app$/
+        /^https:\/\/[a-z0-9-]+\.vercel\.app$/
       )
     ) {
       return { valid: true };

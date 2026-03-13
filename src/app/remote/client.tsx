@@ -19,6 +19,10 @@ const VncScreen = dynamic(
   { ssr: false }
 ) as any; // ref forwarding types lost through dynamic()
 
+// Derive WebSocket URL from file server URL
+const fileServerUrl = process.env.NEXT_PUBLIC_FILE_SERVER_URL || "";
+const wsBase = fileServerUrl.replace(/^http/, "ws");
+
 export function RemoteClient() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -54,7 +58,7 @@ export function RemoteClient() {
       // Store credentials for when onCredentialsRequired fires
       setUsername(user);
       setPassword(pass);
-      setWsUrl(`wss://files.skadauke.dev/vnc?token=${token}`);
+      setWsUrl(`${wsBase}/vnc?token=${token}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection failed");
       setConnecting(false);

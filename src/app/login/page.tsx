@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 
 // Production URL for OAuth
-const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "https://moby-dock.vercel.app";
+const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "";
 
 // Allowed redirect origins (to prevent open redirect attacks)
 const ALLOWED_REDIRECT_PATTERNS = [
@@ -54,11 +54,11 @@ function checkIsProduction(): boolean {
   const hostname = window.location.hostname;
   
   // Derive production hostname from PRODUCTION_URL
-  let prodHostname = "moby-dock.vercel.app";
+  let prodHostname = "";
   try {
     prodHostname = new URL(PRODUCTION_URL).hostname;
   } catch {
-    // Fall back to default if URL parsing fails
+    // No production URL configured
   }
   
   return hostname === prodHostname || 

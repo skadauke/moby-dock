@@ -95,7 +95,7 @@ function extractMedia(text: string): { cleaned: string; media: MediaInfo[] } {
 
 function getMediaUrl(filePath: string): string {
   // Convert absolute path to ~/ relative
-  const HOME = "/Users/skadauke";
+  const HOME = process.env.NEXT_PUBLIC_HOME_DIR || "";
   let relativePath = filePath;
   if (filePath.startsWith(HOME)) {
     relativePath = "~" + filePath.slice(HOME.length);
