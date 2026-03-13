@@ -137,7 +137,10 @@ You are helping me set up moby-dock, a web dashboard for managing OpenClaw AI ag
         supabase/migrations/00000000000000_initial_schema.sql
         (This creates the tasks, projects, and quick_access_items tables)
 
-   c. Cloudflare Tunnel (free — Cloudflare account required):
+   c. Cloudflare Tunnel (free — Cloudflare account + domain required):
+      - The human needs a domain managed by Cloudflare DNS. If they don't have
+        one, they can register one at https://dash.cloudflare.com (Registrar tab)
+        — Cloudflare offers at-cost pricing with no markup.
       - Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
       - Run: cloudflared tunnel login
       - Create a tunnel: cloudflared tunnel create <tunnel-name>
@@ -244,7 +247,7 @@ If you prefer to set things up manually, follow these steps.
 - A **Supabase** account (free tier works)
 - A **Vercel** account (for deployment — free tier works)
 - A **Cloudflare** account (free tier — for tunneling to your file server)
-- A domain name managed by Cloudflare (for a stable tunnel URL; without one, you can use quick tunnels but the URL changes on restart)
+- A **domain name** managed by Cloudflare DNS (for a stable tunnel URL). You can register a domain directly through [Cloudflare Registrar](https://dash.cloudflare.com/?to=/:account/domains/register) — prices are at-cost with no markup. Alternatively, you can use quick tunnels without a domain, but the URL changes on every restart.
 
 #### Quick Start
 
