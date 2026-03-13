@@ -7,17 +7,16 @@ import {
   MonitorOff,
   Maximize,
   Minimize,
-  RefreshCw,
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Dynamic import to avoid SSR issues — react-vnc uses Canvas and WebSocket
-const VncScreen = dynamic(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const VncScreen: any = dynamic(
   () => import("react-vnc").then((m) => m.VncScreen),
   { ssr: false }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) as any; // ref forwarding types lost through dynamic()
+);
 
 // Derive WebSocket URL from file server URL
 const fileServerUrl = (process.env.NEXT_PUBLIC_FILE_SERVER_URL || "").trim();
