@@ -94,15 +94,17 @@ export function Nav({ user }: NavProps) {
         <div className="flex-1" />
 
         {/* GitHub link */}
-        <a
-          href="https://github.com/skadauke/moby-dock"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-zinc-400 hover:text-zinc-100 transition-colors"
-          aria-label="View on GitHub"
-        >
-          <Github className="h-5 w-5" />
-        </a>
+        {process.env.NEXT_PUBLIC_GITHUB_REPO && (
+          <a
+            href={process.env.NEXT_PUBLIC_GITHUB_REPO}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-zinc-100 transition-colors"
+            aria-label="View on GitHub"
+          >
+            <Github className="h-5 w-5" />
+          </a>
+        )}
 
         {/* User menu */}
         {user && (

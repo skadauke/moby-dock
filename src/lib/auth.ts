@@ -4,15 +4,17 @@ import { createAuthMiddleware, APIError } from "better-auth/api";
 import { Logger } from "next-axiom";
 
 // Allowed GitHub usernames (for private access)
-const ALLOWED_USERS = ["skadauke"];
+const ALLOWED_USERS = (process.env.ALLOWED_GITHUB_USERS || "").split(",").map(u => u.trim()).filter(Boolean);
 
 // Production URL for OAuth callbacks - must match GitHub OAuth app settings
-const PRODUCTION_URL = process.env.BETTER_AUTH_URL || "https://moby-dock.vercel.app";
+const PRODUCTION_URL = process.env.BETTER_AUTH_URL || "";
+if (!PRODUCTION_URL && typeof process !== "undefined" && process.env.NODE_ENV !== "development") {
+  console.warn("⚠️  BETTER_AUTH_URL is not set. Auth will not work correctly. Set it to your deployment URL.");
+}
 
 // Build trusted origins list including Vercel preview deployments
 const trustedOriginsList = [
   PRODUCTION_URL,
-  "https://moby-dock.vercel.app",
   // Allow localhost for development
   "http://localhost:3000",
   "http://127.0.0.1:3000",

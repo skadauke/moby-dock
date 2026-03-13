@@ -3,8 +3,8 @@
  * Uses server-side API routes to keep tokens secure
  */
 
-// Home directory - configured via env or defaults to /Users/skadauke
-const HOME = process.env.NEXT_PUBLIC_HOME_DIR || '/Users/skadauke';
+// Home directory — must be configured via NEXT_PUBLIC_HOME_DIR env var
+const HOME = process.env.NEXT_PUBLIC_HOME_DIR?.trim() || "";
 
 interface FileInfo {
   name: string;
@@ -86,7 +86,7 @@ export function getBasePaths(agents: AgentInfo[]): { name: string; path: string;
   const paths = agents.map(a => ({
     name: `${a.emoji || '📁'} ${a.name}`,
     path: a.workspace,
-    description: a.workspace.replace(HOME, '~'),
+    description: HOME ? a.workspace.replace(HOME, '~') : a.workspace,
   }));
   paths.push({ name: 'OpenClaw', path: `${HOME}/.openclaw`, description: '~/.openclaw' });
   return paths;

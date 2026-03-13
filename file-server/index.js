@@ -20,20 +20,14 @@ const PORT = process.env.PORT || 3001;
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
 // Allowed base paths - files outside these are blocked
-const HOME = process.env.HOME || '/Users/skadauke';
-const ALLOWED_PATHS = [
-  `${HOME}/clawd`,           // Moby workspace
-  `${HOME}/clawd-dev`,       // Cody workspace
-  `${HOME}/.openclaw`,       // OpenClaw config + media
-  `${HOME}/openclaw/skills`, // Built-in skills (read-only)
-];
+const os = require('os');
+const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
+const ALLOWED_PATHS = (process.env.ALLOWED_FILE_PATHS || `${HOME}/clawd,${HOME}/clawd-dev,${HOME}/.openclaw,${HOME}/openclaw/skills`)
+  .split(',').map(p => p.trim()).filter(Boolean);
 
 // Read-only paths — writes/deletes blocked
-const READ_ONLY_PATHS = [
-  `${HOME}/openclaw/skills`,
-  `${HOME}/.openclaw/media`,
-  `${HOME}/.clawdbot/media`,
-];
+const READ_ONLY_PATHS = (process.env.READ_ONLY_FILE_PATHS || `${HOME}/openclaw/skills,${HOME}/.openclaw/media`)
+  .split(',').map(p => p.trim()).filter(Boolean);
 
 // Middleware
 app.use(cors());
@@ -1091,11 +1085,12 @@ wss.on('connection', (ws, request) => {
 
   let shell;
   try {
-    shell = pty.spawn('zsh', [], {
+    const defaultShell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/sh');
+    shell = pty.spawn(defaultShell, [], {
       name: 'xterm-256color',
       cols,
       rows,
-      cwd: process.env.HOME || '/Users/skadauke',
+      cwd: process.env.HOME || process.env.USERPROFILE || '/',
       env: { ...process.env, TERM: 'xterm-256color' },
     });
   } catch (err) {

@@ -7,17 +7,22 @@ import {
   MonitorOff,
   Maximize,
   Minimize,
-  RefreshCw,
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Dynamic import to avoid SSR issues — react-vnc uses Canvas and WebSocket
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const VncScreen = dynamic(
+const VncScreen: any = dynamic(
   () => import("react-vnc").then((m) => m.VncScreen),
   { ssr: false }
-) as any; // ref forwarding types lost through dynamic()
+);
+
+// Derive WebSocket URL from file server URL
+const fileServerUrl = (process.env.NEXT_PUBLIC_FILE_SERVER_URL || "").trim();
+const wsBase = fileServerUrl
+  .replace(/^http(s?):\/\//, "ws$1://")
+  .replace(/\/+$/, "");
 
 export function RemoteClient() {
   const [connected, setConnected] = useState(false);
@@ -54,7 +59,12 @@ export function RemoteClient() {
       // Store credentials for when onCredentialsRequired fires
       setUsername(user);
       setPassword(pass);
-      setWsUrl(`wss://files.skadauke.dev/vnc?token=${token}`);
+      if (!wsBase) {
+        throw new Error("File server URL is not configured");
+      }
+      const url = new URL("/vnc", wsBase);
+      url.searchParams.set("token", token);
+      setWsUrl(url.toString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection failed");
       setConnecting(false);
@@ -232,10 +242,10 @@ export function RemoteClient() {
             <form onSubmit={handleLoginSubmit} className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80 space-y-4 text-left">
               <div className="flex items-center gap-2 text-zinc-100">
                 <Lock className="h-5 w-5" />
-                <h2 className="font-semibold">Screen Sharing</h2>
+                <h2 className="font-semibold">Remote Desktop</h2>
               </div>
               <p className="text-zinc-400 text-sm">
-                Enter your macOS credentials to connect.
+                Enter your VNC credentials to connect.
               </p>
               <input
                 type="text"

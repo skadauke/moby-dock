@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const HOME = process.env.HOME || '/Users/skadauke';
+const os = require('os');
+const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
 const LOG_DIR = path.join(HOME, '.openclaw', 'logs');
 const LOG_PREFIX = 'fileserver';
 const MAX_FILE_BYTES = 10_000_000; // 10MB

@@ -13,12 +13,7 @@ import { realpathSync, existsSync } from 'fs';
 const HOME = process.env.HOME_DIR || homedir();
 
 /** Allowed base directories for file operations */
-const ALLOWED_BASE_DIRS = [
-  '~/clawd',
-  '~/clawd-dev',
-  '~/.openclaw',
-  '~/openclaw',   // Built-in skills (read-only)
-];
+const ALLOWED_BASE_DIRS = (process.env.ALLOWED_FILE_PATHS || '~/clawd,~/clawd-dev,~/.openclaw,~/openclaw').split(',').map(p => p.trim()).filter(Boolean);
 
 /** Dangerous path segments that indicate traversal attempts */
 const DANGEROUS_SEGMENTS = ['..', './', '../'];

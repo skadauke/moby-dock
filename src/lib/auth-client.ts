@@ -3,7 +3,7 @@
 import { createAuthClient } from "better-auth/react";
 
 // Production URL for OAuth - must match server config
-const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "https://moby-dock.vercel.app";
+const PRODUCTION_URL = process.env.NEXT_PUBLIC_AUTH_URL || "";
 
 export const authClient = createAuthClient({
   // Always use production URL for auth API calls
