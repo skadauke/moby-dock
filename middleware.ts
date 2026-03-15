@@ -28,8 +28,6 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
         error: csrfResult.error,
         origin: request.headers.get("origin") || "(none)",
         referer: request.headers.get("referer")?.slice(0, 100) || "(none)",
-        hasBetterAuthUrl: !!process.env.BETTER_AUTH_URL,
-        betterAuthUrlHost: process.env.BETTER_AUTH_URL ? new URL(process.env.BETTER_AUTH_URL).hostname : "(unset)",
       });
       event.waitUntil(log.flush());
       return NextResponse.json(
